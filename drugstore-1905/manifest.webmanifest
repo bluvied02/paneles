@@ -1,0 +1,25 @@
+{
+  "name": "Drugstore 1905",
+  "short_name": "Drugstore 1905",
+  "description": "El negocio en el celular: ventas, productos, stock, clientes, caja, gastos y proveedores.",
+  "start_url": "./#/inicio",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#094aa8",
+  "lang": "es-AR",
+  "icons": [
+    {
+      "src": "icono-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icono-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
