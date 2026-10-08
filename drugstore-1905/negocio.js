@@ -54,35 +54,103 @@ function hojaAnularVenta (v, suc) {
   })
 }
 
+// Las ventas de un dia: hoy y ayer las sube la caja siempre; de anteayer a
+// hace 14 dias, una clave por dia ('ventas_dia:AAAA-MM-DD'); un dia mas viejo
+// se le pide a la caja (tarda hasta un minuto). Devuelve { lista, actualizado }
+// o { esperando } / { error }.
+async function ventasDeUnDia (suc, dia, hoyCaja) {
+  if (dia === hoyCaja || dia === sumarDias(hoyCaja, -1)) {
+    const d = await leerDatos(dia === hoyCaja ? 'ventas_hoy' : 'ventas_ayer')
+    const fila = d[suc] || {}
+    return { lista: fila.datos || [], actualizado: fila.actualizado }
+  }
+  const d = await leerDatos('ventas_dia:' + dia).catch(() => ({}))
+  if (d[suc]) return { lista: d[suc].datos || [], actualizado: d[suc].actualizado }
+  // Mas viejo: se le pide a la caja (una vez por dia y sucursal).
+  const k = suc + '|' + dia
+  S.ventasPedidas = S.ventasPedidas || {}
+  const p = S.ventasPedidas[k]
+  if (p && p.lista) return { lista: p.lista }
+  if (p && p.error) return { error: p.error }
+  if (!p) {
+    S.ventasPedidas[k] = { desde: Date.now() }
+    mandarOrden(suc, 'ventas_dia', { dia }, {
+      callado: true,
+      silencioso: true,
+      alTerminar: (r) => {
+        const res = r.resultado || {}
+        S.ventasPedidas[k] = r.estado === 'aplicada' && res.datos ? { lista: res.datos } : { error: res.error || 'La caja no pudo mandar las ventas' }
+        if (S.seccion === 'ventas') render()
+      }
+    })
+  }
+  return { esperando: true, desde: S.ventasPedidas[k].desde }
+}
+
 async function secVentas () {
   if (!S.sucursal) return pintarSeccion('ventas', cabecera('Ventas'), el('div', { clase: 'tarjeta' }, vacio('Todavía no hay sucursales conectadas.', 'ventas')))
   const E = S.vent = Object.assign({ dia: 'hoy', busca: '', medio: '' }, S.vent || {})
-  const datos = await leerDatos(E.dia === 'hoy' ? 'ventas_hoy' : 'ventas_ayer')
-  const fila = datos[S.sucursal] || {}
-  const lista = fila.datos || []
+  // El "hoy" de la caja (el dia de trabajo del local, que cambia a la hora de corte).
+  const reps = await leerDatos('reportes').catch(() => ({}))
+  const hoyCaja = ((datosDe(reps, S.sucursal) || {}).hoy || {}).desde || hoyISO()
+  const ayerCaja = sumarDias(hoyCaja, -1)
+  const dias = E.dia === 'hoy' ? [hoyCaja] : E.dia === 'ayer' ? [ayerCaja] : E.dia === '7dias' ? Array.from({ length: 7 }, (_, i) => sumarDias(hoyCaja, -i)) : [E.dia]
+  const resultados = await Promise.all(dias.map((d) => ventasDeUnDia(S.sucursal, d, hoyCaja).then((r) => Object.assign({ dia: d }, r))))
+  const lista = []
+  for (const r of resultados) for (const v of r.lista || []) lista.push(Object.assign({ _dia: r.dia }, v))
+  const esperando = resultados.filter((r) => r.esperando)
+  const errores = resultados.filter((r) => r.error)
+  const actualizado = resultados.map((r) => r.actualizado).filter(Boolean).sort().pop()
+  const varios = dias.length > 1
+
   const validas = lista.filter((v) => !v.a)
   const total = validas.reduce((s, v) => s + v.t, 0)
   const busca = el('input', { type: 'search', placeholder: 'Ticket, producto, cliente o vendedor…', valor: E.busca })
-  const zona = el('div', { clase: 'lista' })
+  const zona = el('div', {})
   const cuenta = el('span', { clase: 'sub' })
-  let limite = 80
+  let limite = 120
   const pintar = () => {
     const filas = lista.filter((v) => (!E.medio || v.m.includes(E.medio)) && (!E.busca || coincide(v.n + ' ' + v.u + ' ' + v.c + ' ' + v.i.map((it) => it[0]).join(' '), E.busca)))
-    poner(zona, filas.length ? filas.slice(0, limite).map((v) => itemVenta(v, () => hojaVenta(v))) : vacio(lista.length ? 'Ninguna venta coincide.' : 'Todavía no hay ventas ' + (E.dia === 'hoy' ? 'hoy' : 'ayer') + '.', 'ventas'),
-      filas.length > limite ? el('button', { clase: 'btn ancho', estilo: { margin: '8px 16px', width: 'calc(100% - 32px)' }, onclick: () => { limite += 150; pintar() } }, 'Ver más') : null)
+    const mostradas = filas.slice(0, limite)
+    const bloques = []
+    if (varios) {
+      // Separadas por dia, con lo vendido de cada uno.
+      for (const d of dias) {
+        const delDia = mostradas.filter((v) => v._dia === d)
+        if (!delDia.length) continue
+        const vend = filas.filter((v) => v._dia === d && !v.a)
+        bloques.push(el('div', { clase: 'tarjeta-cab', estilo: { marginTop: '10px' } }, el('b', {}, fechaCorta(d)), el('span', { clase: 'sub' }, plata(vend.reduce((s, v) => s + v.t, 0)) + ' · ' + vend.length + ' ventas')),
+          el('div', { clase: 'tarjeta sin-relleno' }, el('div', { clase: 'lista' }, delDia.map((v) => itemVenta(v, () => hojaVenta(v))))))
+      }
+    } else if (mostradas.length) {
+      bloques.push(el('div', { clase: 'tarjeta sin-relleno' }, el('div', { clase: 'lista' }, mostradas.map((v) => itemVenta(v, () => hojaVenta(v))))))
+    }
+    if (!bloques.length && !esperando.length) bloques.push(el('div', { clase: 'tarjeta' }, vacio(lista.length ? 'Ninguna venta coincide.' : 'No hay ventas ' + (E.dia === 'hoy' ? 'hoy' : E.dia === 'ayer' ? 'ayer' : varios ? 'en estos días' : 'el ' + fechaCorta(E.dia)) + '.', 'ventas')))
+    if (filas.length > limite) bloques.push(el('button', { clase: 'btn ancho', estilo: { margin: '8px 0' }, onclick: () => { limite += 200; pintar() } }, 'Ver más'))
+    poner(zona, bloques)
     cuenta.textContent = filas.length + (filas.length === 1 ? ' venta' : ' ventas') + (E.medio || E.busca ? ' · ' + plata(filas.filter((v) => !v.a).reduce((s, v) => s + v.t, 0)) : '')
   }
   const filtros = el('div', { clase: 'filtros' })
   const pintarFiltros = () => poner(filtros, MEDIOS_VENTA.filter(([id]) => !id || lista.some((v) => v.m.includes(id))).map(([id, t]) => el('button', { clase: 'filtro' + (E.medio === id ? ' activo' : ''), onclick: () => { E.medio = id; pintarFiltros(); pintar() } }, t)))
-  busca.addEventListener('input', () => { E.busca = busca.value; limite = 80; pintar() })
+  busca.addEventListener('input', () => { E.busca = busca.value; limite = 120; pintar() })
   pintarFiltros()
   pintar()
+
+  const unDia = /^\d{4}-\d{2}-\d{2}$/.test(E.dia)
+  const elegir = el('input', { type: 'date', max: hoyCaja, valor: unDia ? E.dia : '', title: 'Elegir un día', estilo: { maxWidth: '150px' } })
+  elegir.addEventListener('change', () => { if (elegir.value) { E.dia = elegir.value === hoyCaja ? 'hoy' : elegir.value === ayerCaja ? 'ayer' : elegir.value; render() } })
+  const titulo = E.dia === 'hoy' ? 'hoy' : E.dia === 'ayer' ? 'ayer' : varios ? 'los últimos 7 días' : 'el ' + fechaCorta(E.dia)
   pintarSeccion('ventas',
-    cabecera('Ventas', nombreSucursal(S.sucursal) + ' · ' + (fila.actualizado ? 'actualizado ' + hace(fila.actualizado) : 'sin datos todavía'),
+    cabecera('Ventas', nombreSucursal(S.sucursal) + ' · ' + titulo + (actualizado ? ' · actualizado ' + hace(actualizado) : ''),
       el('button', { clase: 'btn', onclick: () => ir('reportes') }, icono('reportes'), 'Reportes')),
-    el('div', { clase: 'seg ancho', estilo: { marginBottom: '12px' } },
-      el('button', { clase: E.dia === 'hoy' ? 'activo' : '', onclick: () => { E.dia = 'hoy'; render() } }, 'Hoy'),
-      el('button', { clase: E.dia === 'ayer' ? 'activo' : '', onclick: () => { E.dia = 'ayer'; render() } }, 'Ayer')),
+    el('div', { clase: 'fila', estilo: { gap: '8px', marginBottom: '12px', flexWrap: 'wrap' } },
+      el('div', { clase: 'seg' },
+        el('button', { clase: E.dia === 'hoy' ? 'activo' : '', onclick: () => { E.dia = 'hoy'; render() } }, 'Hoy'),
+        el('button', { clase: E.dia === 'ayer' ? 'activo' : '', onclick: () => { E.dia = 'ayer'; render() } }, 'Ayer'),
+        el('button', { clase: E.dia === '7dias' ? 'activo' : '', onclick: () => { E.dia = '7dias'; render() } }, '7 días')),
+      elegir),
+    esperando.length ? el('div', { clase: 'aviso' }, el('b', {}, 'Pidiéndole las ventas a la caja…'), 'Ese día es de hace más de dos semanas: la caja lo manda en menos de un minuto (tiene que estar prendida).') : null,
+    errores.length ? el('div', { clase: 'aviso mal' }, el('b', {}, 'No se pudieron traer'), errores.map((r) => r.error).join(' · ')) : null,
     el('div', { clase: 'kpis' },
       kpi('Vendido', plata(total), validas.length + ' ventas', { clase: 'principal' }),
       kpi('Ticket promedio', plata(validas.length ? total / validas.length : 0)),
@@ -90,7 +158,7 @@ async function secVentas () {
     el('div', { clase: 'buscador' }, icono('buscar'), busca),
     filtros,
     el('div', { clase: 'tarjeta-cab' }, cuenta),
-    el('div', { clase: 'tarjeta sin-relleno' }, zona))
+    zona)
 }
 
 // --- REPORTES ------------------------------------------------------------------

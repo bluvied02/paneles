@@ -45,7 +45,7 @@ const S = {
 // La version de la app. Al abrirla (o al volver a ella) se fija si hay una
 // nueva publicada y, si la hay, se recarga sola: en el iPhone la app queda
 // abierta en memoria y si no, seguiria la vieja por dias.
-const VERSION_APP = '12.0'
+const VERSION_APP = '12.2'
 const $app = document.getElementById('app')
 const $tooltip = document.getElementById('tooltip')
 
@@ -98,8 +98,15 @@ const aCentavos = (txt) => { const s = String(txt == null ? '' : txt).trim(); if
 const aMilesimas = (txt) => { const s = String(txt == null ? '' : txt).trim(); if (!s) return NaN; const n = Number(s.replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 1000) : NaN }
 const uuid = () => (crypto && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16) }))
 const vibrar = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 40) } catch (e) {} }
-const guardarLocal = (k, v) => { try { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)) } catch (e) {} }
-const leerLocal = (k, def) => { try { const v = localStorage.getItem(k); if (v == null) return def; try { return JSON.parse(v) } catch (e) { return v } } catch (e) { return def } }
+// La app de Blue Store y la de cada cliente (/paneles/<cliente>/) viven en el mismo
+// dominio (bluvied02.github.io) y el navegador les da la MISMA memoria. Las de los
+// clientes guardan todo con su carpeta adelante: asi ninguna lee el proyecto ni la
+// sesion de la otra (paso: la de un cliente abrio la nube de Blue Store en el
+// celular de Pablo). La de Blue Store sigue con sus nombres de siempre.
+const ESPACIO = /\/paneles\//.test(location.pathname) ? location.pathname : ''
+const conEspacio = (k) => (ESPACIO ? ESPACIO + '|' + k : k)
+const guardarLocal = (k, v) => { try { localStorage.setItem(conEspacio(k), typeof v === 'string' ? v : JSON.stringify(v)) } catch (e) {} }
+const leerLocal = (k, def) => { try { const v = localStorage.getItem(conEspacio(k)); if (v == null) return def; try { return JSON.parse(v) } catch (e) { return v } } catch (e) { return def } }
 const margenDe = (precio, costo) => (costo > 0 && precio > 0 ? Math.round((precio - costo) * 10000 / costo) : null)
 const NOMBRE_MEDIO = { efectivo: 'Efectivo', mercado_pago: 'Mercado Pago', debito: 'Débito', credito: 'Crédito', transferencia: 'Transferencia', qr: 'QR', cuenta_corriente: 'Cuenta corriente' }
 
@@ -244,7 +251,7 @@ const DB = {
     if (this._p) return this._p
     this._p = new Promise((ok) => {
       try {
-        const r = indexedDB.open('bs-panel', 1)
+        const r = indexedDB.open(conEspacio('bs-panel'), 1)
         r.onupgradeneeded = () => r.result.createObjectStore('kv')
         r.onsuccess = () => ok(r.result)
         r.onerror = () => ok(null)
@@ -386,6 +393,7 @@ async function buscarCodigo (codigo, sucursalId) {
 
 const NOMBRE_ORDEN = {
   reporte: 'Reporte',
+  ventas_dia: 'Ventas de un día',
   producto: 'Cambio de producto', stock: 'Ajuste de stock', aumento: 'Aumento de precios', producto_nuevo: 'Producto nuevo',
   promo_estado: 'Promo', promo_borrar: 'Borrar promo', promo_guardar: 'Promo nueva', anular_venta: 'Anular venta', anulacion_rechazar: 'No anular',
   cliente_guardar: 'Cliente', cliente_pago: 'Pago de cliente', cliente_deuda: 'Deuda de cliente', gasto: 'Gasto',
@@ -489,12 +497,15 @@ function seguirOrdenes () {
 
 async function proyectoRef () {
   const m = /[#&]p=([a-z0-9]+)/.exec(location.hash)
-  if (m) { guardarLocal('bs.proyecto', m[1]); history.replaceState(null, '', location.pathname + '#/inicio'); return m[1] }
-  const x = leerLocal('bs.proyecto', '')
-  if (x) return x
-  // La app del celular (en la pantalla de inicio) no siempre trae el link.
-  try { const r = await fetch('proyecto.json', { cache: 'no-store' }); if (r.ok) return (await r.json()).ref } catch (e) {}
-  return ''
+  if (m) history.replaceState(null, '', location.pathname + '#/inicio')
+  // Manda el proyecto de la carpeta (proyecto.json): un link viejo o lo que haya
+  // quedado guardado no pueden llevar esta app a la nube de otro negocio.
+  try {
+    const r = await fetch('proyecto.json', { cache: 'no-store' })
+    if (r.ok) { const ref = (await r.json()).ref; if (ref) { guardarLocal('bs.proyecto', ref); return ref } }
+  } catch (e) { /* sin internet: lo de abajo */ }
+  if (m) { guardarLocal('bs.proyecto', m[1]); return m[1] }
+  return leerLocal('bs.proyecto', '')
 }
 
 async function buscarVersionNueva () {
@@ -531,7 +542,7 @@ async function arrancar () {
   }
   S.negocio = conf.nombre || conf.negocio || 'Mi negocio'
   document.title = S.negocio
-  S.sb = window.supabase.createClient(base, conf.anon, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'bs-panel', detectSessionInUrl: true } })
+  S.sb = window.supabase.createClient(base, conf.anon, { auth: { persistSession: true, autoRefreshToken: true, storageKey: conEspacio('bs-panel'), detectSessionInUrl: true } })
   S.sb.auth.onAuthStateChange((evento) => { if (evento === 'PASSWORD_RECOVERY') pantallaNuevaClave() })
   const { data } = await S.sb.auth.getSession()
   if (/type=recovery/.test(location.hash)) return

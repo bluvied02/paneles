@@ -4,8 +4,12 @@
 //   - Recibe las notificaciones aunque la app este cerrada.
 // Los datos del negocio los guarda la app misma (IndexedDB), no esto.
 
-const VERSION = 'bs-panel-v12-0'
-const APP = ['./', 'index.html', 'estilos.css?v=12.0', 'app.js?v=12.0', 'lector.js?v=12.0', 'productos.js?v=12.0', 'negocio.js?v=12.0', 'promociones.js?v=12.0', 'local.js?v=12.0', 'otros.js?v=12.0', 'manifest.webmanifest', 'icono-192.png', 'icono-512.png']
+// El cache de cada app por separado (la de Blue Store y la de cada cliente
+// comparten dominio): al actualizarse, cada una borra solo los suyos.
+const ESPACIO = /\/paneles\//.test(self.registration.scope) ? new URL(self.registration.scope).pathname : ''
+const PREFIJO = ESPACIO ? 'cliente|' + ESPACIO + '|v' : 'bs-panel-v'
+const VERSION = PREFIJO + '12-2'
+const APP = ['./', 'index.html', 'estilos.css?v=12.2', 'app.js?v=12.2', 'lector.js?v=12.2', 'productos.js?v=12.2', 'negocio.js?v=12.2', 'promociones.js?v=12.2', 'local.js?v=12.2', 'otros.js?v=12.2', 'manifest.webmanifest', 'icono-192.png', 'icono-512.png']
 const LIBRERIAS = ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js']
 
 self.addEventListener('install', (ev) => {
@@ -13,7 +17,7 @@ self.addEventListener('install', (ev) => {
 })
 
 self.addEventListener('activate', (ev) => {
-  ev.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()))
+  ev.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith(PREFIJO) && k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()))
 })
 
 self.addEventListener('fetch', (ev) => {
