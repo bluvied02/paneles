@@ -214,8 +214,8 @@ async function secAvisos () {
   const anul = await leerDatos('anulaciones').catch(() => ({}))
   guardarLocal('bs.avisosVistos', new Date().toISOString())
   contarAvisos()
-  const tono = { cierre: 'mal', anulacion: 'alerta', pedido_anulacion: 'alerta', personal: 'mal', caja: 'mal', pago: 'alerta', resumen: 'info', sistema: 'alerta' }
-  const ico = { cierre: 'caja', anulacion: 'ventas', pedido_anulacion: 'ventas', personal: 'clientes', caja: 'caja', pago: 'apagar', resumen: 'reportes', sistema: 'nube' }
+  const tono = { cierre: 'mal', anulacion: 'alerta', pedido_anulacion: 'alerta', personal: 'mal', caja: 'mal', pago: 'alerta', resumen: 'info', sistema: 'alerta', descuento: 'alerta', reponer: 'info' }
+  const ico = { cierre: 'caja', anulacion: 'ventas', pedido_anulacion: 'ventas', personal: 'clientes', caja: 'caja', pago: 'apagar', resumen: 'reportes', sistema: 'nube', descuento: 'ventas', reponer: 'reponer' }
   const pedidos = []
   for (const [id, f] of Object.entries(anul)) for (const p of f.datos || []) pedidos.push(Object.assign({ sucursalId: id, sucursal: f.nombre }, p))
   const bloques = []
