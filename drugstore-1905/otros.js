@@ -316,7 +316,7 @@ function secAjustes () {
 // --- MAS (celular) ---------------------------------------------------------------------------
 
 function secMas () {
-  const ids = ['reportes', 'clientes', 'encargos', 'caja', 'gastos', 'contar', 'recibir', 'stock', 'pasar', 'proveedores', 'apagar', 'reponer', 'faltantes', 'promos', 'cierres', 'historial', 'avisos', 'ajustes']
+  const ids = ['metricas', 'reportes', 'clientes', 'encargos', 'mayorista', 'caja', 'gastos', 'contar', 'recibir', 'stock', 'pasar', 'proveedores', 'apagar', 'reponer', 'faltantes', 'promos', 'cierres', 'historial', 'avisos', 'ajustes']
   pintarSeccion('mas',
     cabecera('Más', S.negocio + (esEncargado() ? ' · encargado' : '')),
     el('div', { clase: 'mas-grilla' }, ids.filter((id) => SECCIONES[id] && seccionPermitida(id)).map((id) => el('button', { clase: 'acceso', onclick: () => ir(id) },
