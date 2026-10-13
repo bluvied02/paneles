@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tienda</title>
+<meta name="description" content="Elegí los productos y mandá el pedido por WhatsApp.">
+<link rel="icon" href="icono-192.png">
+<style>
+:root {
+  --fondo: #f5f6f8; --tarjeta: #ffffff; --texto: #14181f; --tenue: #5d6675; --borde: #e3e6eb;
+  --acento: #1f6feb; --acento-texto: #ffffff; --ok: #1a7f37; --whatsapp: #1f9d55;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --fondo: #0c0f14; --tarjeta: #161b22; --texto: #e6e9ee; --tenue: #9aa4b2; --borde: #262d38; --acento: #4c8dff; --acento-texto: #0c0f14; --ok: #3fb950; --whatsapp: #2ea86a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fondo); color: var(--texto); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding-bottom: 90px; }
+header { padding: 18px 16px 10px; max-width: 760px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0; }
+.sub { color: var(--tenue); font-size: 13px; }
+.mensaje { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 14px; }
+.barra { position: sticky; top: 0; z-index: 5; background: var(--fondo); padding: 8px 16px; max-width: 760px; margin: 0 auto; }
+input[type=search], input[type=text], textarea { width: 100%; font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; scrollbar-width: none; }
+.chip { flex: none; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.chip.activo { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+.prod { display: flex; gap: 10px; align-items: center; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
+.prod img, .prod .sin-foto { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: none; background: var(--borde); }
+.prod .info { flex: 1; min-width: 0; }
+.prod .nom { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.prod .precio { font-variant-numeric: tabular-nums; font-weight: 700; }
+.prod.agotado { opacity: .55; }
+.paso { display: flex; align-items: center; gap: 6px; flex: none; }
+.paso button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); font-size: 18px; cursor: pointer; }
+.paso button.mas { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+.paso b { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.mas-items { display: block; margin: 10px auto 20px; }
+.btn { border: 0; border-radius: 10px; padding: 12px 16px; font: inherit; font-weight: 600; cursor: pointer; background: var(--tarjeta); color: var(--texto); border: 1px solid var(--borde); }
+.btn.principal { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+.btn.whatsapp { background: var(--whatsapp); color: #fff; border-color: var(--whatsapp); width: 100%; font-size: 16px; }
+.pie { position: fixed; left: 0; right: 0; bottom: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--fondo); border-top: 1px solid var(--borde); }
+.pie .btn { width: 100%; max-width: 728px; display: block; margin: 0 auto; font-size: 16px; }
+.hoja { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; z-index: 10; }
+.hoja.abierta { display: block; }
+.hoja > div { position: absolute; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow: auto; background: var(--fondo); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-width: 760px; margin: 0 auto; }
+.linea { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--borde); }
+.linea .info { flex: 1; min-width: 0; font-size: 14px; }
+.total { display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; margin: 12px 0; }
+.campo { margin: 10px 0; }
+.campo label { display: block; font-size: 13px; color: var(--tenue); margin-bottom: 4px; }
+.seg { display: flex; gap: 6px; }
+.seg button { flex: 1; }
+.seg button.activo { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+.vacio { text-align: center; color: var(--tenue); padding: 40px 10px; }
+.aviso { color: var(--tenue); font-size: 12px; text-align: center; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<header id="cab"><h1>Cargando…</h1></header>
+<div class="barra" id="barra" hidden>
+  <input type="search" id="buscar" placeholder="Buscar un producto…" autocomplete="off">
+  <div class="chips" id="chips"></div>
+</div>
+<main id="lista"></main>
+<div class="pie" id="pie" hidden><button class="btn principal" id="verPedido"></button></div>
+<div class="hoja" id="hoja"><div id="hojaCuerpo"></div></div>
+<script>
+'use strict'
+// La tienda online: lee el archivo publico que deja la caja de la sucursal y
+// arma el pedido para mandarlo por WhatsApp. No tiene claves ni escribe nada.
+;(function () {
+  const params = new URLSearchParams((location.hash || '').slice(1) || location.search.slice(1))
+  const proyecto = String(params.get('p') || '').replace(/[^a-z0-9-]/gi, '')
+  const sucursal = String(params.get('s') || '').replace(/[^\w-]/g, '')
+  const $ = (id) => document.getElementById(id)
+  const el = (tag, props, ...hijos) => {
+    const n = document.createElement(tag)
+    for (const [k, v] of Object.entries(props || {})) {
+      if (k === 'clase') n.className = v
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v)
+      else if (v != null && v !== false) n.setAttribute(k, v === true ? '' : v)
+    }
+    for (const h of hijos.flat()) if (h != null && h !== false) n.append(h.nodeType ? h : String(h))
+    return n
+  }
+  const pesos = (c) => '$ ' + (Math.round(c) / 100).toLocaleString('es-AR', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })
+  const normal = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const CLAVE = 'tienda.' + proyecto + '.' + sucursal
+  const leer = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d } catch (e) { return d } }
+  const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) { /* sin almacenamiento */ } }
+
+  let datos = null
+  let productos = []
+  let pedido = leer(CLAVE + '.pedido', {})
+  let categoria = ''
+  let mostrar = 80
+  const cliente = leer(CLAVE + '.cliente', { nombre: '', entrega: 'retiro', direccion: '' })
+
+  const fallar = (texto) => { $('cab').replaceChildren(el('h1', {}, 'Tienda'), el('p', { clase: 'sub' }, texto)) }
+
+  async function cargar () {
+    if (!proyecto || !sucursal) return fallar('El link está incompleto. Pedile al local que te lo mande de nuevo.')
+    try {
+      // En la compu de prueba (localhost) se puede leer un archivo de ejemplo.
+      const ejemplo = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && params.get('datos')
+      const r = ejemplo ? await fetch(ejemplo) : await fetch('https://' + proyecto + '.supabase.co/storage/v1/object/public/panel/tienda/' + sucursal + '.json?t=' + Math.floor(Date.now() / 120000), { cache: 'no-store' })
+      if (!r.ok) throw new Error('no hay')
+      datos = await r.json()
+    } catch (e) { return fallar('No se pudo abrir la tienda. Revisá la conexión y probá de nuevo.') }
+    if (!datos || datos.apagada || !Array.isArray(datos.productos)) return fallar('Esta tienda no está disponible por ahora.')
+    productos = datos.productos.map((p, i) => ({ i, nombre: p[0], precio: p[1], categoria: p[2] || 'Otros', foto: p[3], hay: !!p[4], busca: normal(p[0] + ' ' + p[2]) }))
+    // Lo guardado de otra visita: solo lo que sigue estando, al precio de hoy.
+    const porNombre = {}
+    for (const p of productos) porNombre[p.nombre] = p
+    const limpio = {}
+    for (const [n, c] of Object.entries(pedido)) if (porNombre[n] && porNombre[n].hay && c > 0) limpio[n] = Math.min(99, c)
+    pedido = limpio
+    document.title = (datos.negocio || 'Tienda') + (datos.sucursal ? ' · ' + datos.sucursal : '')
+    $('cab').replaceChildren(...[
+      el('h1', {}, datos.negocio || 'Tienda'),
+      el('div', { clase: 'sub' }, [datos.sucursal, datos.direccion].filter(Boolean).join(' · ')),
+      datos.mensaje ? el('div', { clase: 'mensaje' }, datos.mensaje) : null,
+      !datos.whatsapp ? el('div', { clase: 'mensaje' }, 'Esta tienda todavía no tiene WhatsApp para recibir pedidos.') : null].filter(Boolean))
+    $('barra').hidden = false
+    pintarChips()
+    pintarLista()
+    pintarPie()
+  }
+
+  function pintarChips () {
+    const cats = [...new Set(productos.map((p) => p.categoria))]
+    $('chips').replaceChildren(...[''].concat(cats).map((c) => el('button', { clase: 'chip' + (c === categoria ? ' activo' : ''), onclick: () => { categoria = c; mostrar = 80; pintarChips(); pintarLista() } }, c || 'Todo')))
+  }
+
+  function paso (p, alCambiar) {
+    const cant = pedido[p.nombre] || 0
+    if (!p.hay) return el('span', { clase: 'sub' }, 'sin stock')
+    const cambiar = (d) => {
+      const n = Math.max(0, Math.min(99, (pedido[p.nombre] || 0) + d))
+      if (n) pedido[p.nombre] = n
+      else delete pedido[p.nombre]
+      guardar(CLAVE + '.pedido', pedido)
+      alCambiar()
+      pintarPie()
+    }
+    return el('div', { clase: 'paso' },
+      cant ? el('button', { 'aria-label': 'Uno menos', onclick: () => cambiar(-1) }, '−') : null,
+      cant ? el('b', {}, cant) : null,
+      el('button', { clase: 'mas', 'aria-label': 'Agregar ' + p.nombre, onclick: () => cambiar(1) }, '+'))
+  }
+
+  function fila (p) {
+    const n = el('div', { clase: 'prod' + (p.hay ? '' : ' agotado') })
+    const pintar = () => n.replaceChildren(
+      p.foto ? el('img', { src: p.foto, alt: '', loading: 'lazy' }) : el('div', { clase: 'sin-foto' }),
+      el('div', { clase: 'info' }, el('div', { clase: 'nom' }, p.nombre), el('div', { clase: 'precio' }, pesos(p.precio))),
+      paso(p, pintar))
+    pintar()
+    return n
+  }
+
+  function pintarLista () {
+    const q = normal($('buscar').value).split(/\s+/).filter(Boolean)
+    const vis = productos.filter((p) => (!categoria || p.categoria === categoria) && q.every((w) => p.busca.includes(w)))
+    const lista = $('lista')
+    if (!vis.length) return lista.replaceChildren(el('div', { clase: 'vacio' }, productos.length ? 'No encontramos ese producto.' : 'Todavía no hay productos.'))
+    lista.replaceChildren(...vis.slice(0, mostrar).map(fila),
+      vis.length > mostrar ? el('button', { clase: 'btn mas-items', onclick: () => { mostrar += 120; pintarLista() } }, 'Ver más (' + (vis.length - mostrar) + ')') : '',
+      el('p', { clase: 'aviso' }, 'Precios de lista: pueden cambiar. Las promociones se aplican en el local.'))
+  }
+
+  const lineas = () => Object.entries(pedido).map(([n, c]) => ({ p: productos.find((x) => x.nombre === n), c })).filter((x) => x.p)
+  const totalPedido = () => lineas().reduce((s, x) => s + x.p.precio * x.c, 0)
+
+  function pintarPie () {
+    const l = lineas()
+    $('pie').hidden = !l.length
+    if (l.length) $('verPedido').textContent = 'Ver pedido · ' + l.reduce((s, x) => s + x.c, 0) + ' u. · ' + pesos(totalPedido())
+  }
+
+  function abrirPedido () {
+    const cuerpo = $('hojaCuerpo')
+    const nombre = el('input', { type: 'text', maxlength: '60', placeholder: 'Tu nombre', value: cliente.nombre })
+    const direccion = el('input', { type: 'text', maxlength: '120', placeholder: 'Calle, número, piso', value: cliente.direccion })
+    const nota = el('textarea', { rows: '2', maxlength: '300', placeholder: 'Algo más (opcional)' })
+    const campoDir = el('div', { clase: 'campo' }, el('label', {}, 'Dirección de envío'), direccion)
+    const seg = el('div', { clase: 'seg' })
+    const pintarSeg = () => {
+      seg.replaceChildren(...[['retiro', 'Retiro en el local'], ['envio', 'Envío a domicilio']].map(([k, t]) => el('button', { clase: 'btn' + (cliente.entrega === k ? ' activo' : ''), onclick: () => { cliente.entrega = k; pintarSeg() } }, t)))
+      campoDir.hidden = cliente.entrega !== 'envio'
+    }
+    const listaL = el('div', {})
+    const tot = el('div', { clase: 'total' })
+    const pintarL = () => {
+      const l = lineas()
+      if (!l.length) { cerrarHoja(); return }
+      listaL.replaceChildren(...l.map((x) => el('div', { clase: 'linea' },
+        el('div', { clase: 'info' }, el('div', {}, x.p.nombre), el('div', { clase: 'sub' }, pesos(x.p.precio) + ' c/u')),
+        paso(x.p, pintarL))))
+      tot.replaceChildren(el('span', {}, 'Total aproximado'), el('span', {}, pesos(totalPedido())))
+    }
+    const enviar = () => {
+      cliente.nombre = nombre.value.trim()
+      cliente.direccion = direccion.value.trim()
+      guardar(CLAVE + '.cliente', cliente)
+      if (!cliente.nombre) { nombre.focus(); nombre.placeholder = 'Poné tu nombre'; return }
+      if (cliente.entrega === 'envio' && !cliente.direccion) { direccion.focus(); return }
+      if (!datos.whatsapp) return alert('Esta tienda todavía no tiene WhatsApp para recibir pedidos.')
+      const t = ['Hola! Quiero hacer este pedido' + (datos.sucursal ? ' (' + datos.sucursal + ')' : '') + ':', '']
+      for (const x of lineas()) t.push(x.c + ' x ' + x.p.nombre + ' — ' + pesos(x.p.precio * x.c))
+      t.push('', 'Total aproximado: ' + pesos(totalPedido()), 'Nombre: ' + cliente.nombre)
+      t.push(cliente.entrega === 'envio' ? 'Envío a: ' + cliente.direccion : 'Lo retiro en el local')
+      if (nota.value.trim()) t.push('Nota: ' + nota.value.trim())
+      location.href = 'https://wa.me/' + datos.whatsapp + '?text=' + encodeURIComponent(t.join('\n'))
+    }
+    cuerpo.replaceChildren(
+      el('div', { style: 'display:flex;justify-content:space-between;align-items:center' }, el('h2', { style: 'margin:0;font-size:19px' }, 'Tu pedido'), el('button', { clase: 'btn', onclick: cerrarHoja }, 'Seguir eligiendo')),
+      listaL, tot,
+      el('div', { clase: 'campo' }, el('label', {}, 'Nombre'), nombre),
+      el('div', { clase: 'campo' }, seg),
+      campoDir,
+      el('div', { clase: 'campo' }, nota),
+      el('button', { clase: 'btn whatsapp', onclick: enviar }, 'Enviar pedido por WhatsApp'),
+      el('p', { clase: 'aviso' }, 'Se abre WhatsApp con el pedido escrito: solo tenés que apretar enviar. El local te confirma el total.'))
+    pintarSeg()
+    pintarL()
+    $('hoja').classList.add('abierta')
+  }
+  function cerrarHoja () { $('hoja').classList.remove('abierta'); pintarLista() }
+
+  $('buscar').addEventListener('input', () => { mostrar = 80; pintarLista() })
+  $('verPedido').addEventListener('click', abrirPedido)
+  $('hoja').addEventListener('click', (ev) => { if (ev.target === $('hoja')) cerrarHoja() })
+  cargar()
+})()
+</script>
+</body>
+</html>
