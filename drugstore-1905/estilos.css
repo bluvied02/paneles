@@ -311,3 +311,17 @@ label.campo, .campo { display: grid; gap: 5px; margin-bottom: 12px; font-size: 1
 .tabla th.num, .tabla td.num { text-align: right; }
 .scroll-x { overflow-x: auto; }
 .mas-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+
+/* Metricas (Dashboard nuevo) */
+.grafico { width: 100%; overflow: hidden; margin-top: 6px; }
+.grafico-barras { display: block; }
+.grafico-barras .serie-1 { fill: var(--acento); }
+.grafico-barras .serie-2 { fill: var(--verde); }
+.grafico-barras .eje { stroke: var(--borde); stroke-width: 1; }
+.grafico-barras .etiqueta { fill: var(--texto3); font-size: 11px; }
+.grafico-barras .toque { fill: transparent; }
+.grafico-barras .barra.sel .toque { fill: var(--sup2); }
+.leyenda-met { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--texto3); }
+.leyenda-met i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.leyenda-met i.serie-1 { background: var(--acento); }
+.leyenda-met i.serie-2 { background: var(--verde); }
