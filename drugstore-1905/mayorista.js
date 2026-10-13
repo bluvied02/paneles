@@ -246,6 +246,24 @@ function colorRgb (hex) {
   return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [27, 92, 224]
 }
 
+function logoPng (dataUrl) {
+  return new Promise((ok, mal) => {
+    const img = new Image()
+    img.onload = () => {
+      const k = Math.min(1, 320 / Math.max(img.width, img.height))
+      const c = document.createElement('canvas')
+      c.width = Math.round(img.width * k)
+      c.height = Math.round(img.height * k)
+      const ctx = c.getContext('2d')
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, 0, 0, c.width, c.height)
+      ok(c.toDataURL('image/png'))
+    }
+    img.onerror = mal
+    img.src = dataUrl
+  })
+}
+
 async function armarPdfMay (x, d) {
   for (const s of SCRIPTS_PDF) await cargarScriptMay(s)
   const { jsPDF } = window.jspdf
@@ -255,8 +273,11 @@ async function armarPdfMay (x, d) {
   const gris = [100, 110, 125]
   let y = 16
   let xTexto = 14
-  if (n.logo && /^data:image\/(png|jpe?g)/i.test(n.logo)) {
-    try { doc.addImage(n.logo, /png/i.test(n.logo) ? 'PNG' : 'JPEG', 14, 10, 22, 22); xTexto = 40 } catch (e) { /* sin logo */ }
+  // El PDF acepta PNG o JPG: un logo WebP (o muy grande) se pasa a PNG chico.
+  let logo = n.logo
+  if (logo && (!/^data:image\/(png|jpe?g)/i.test(logo) || logo.length > 400000)) logo = await logoPng(logo).catch(() => null)
+  if (logo) {
+    try { doc.addImage(logo, /png/i.test(logo) ? 'PNG' : 'JPEG', 14, 10, 22, 22); xTexto = 40 } catch (e) { /* sin logo */ }
   }
   doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(26, 34, 51).text(String(n.nombre || ''), xTexto, y + 2)
   doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...gris)
