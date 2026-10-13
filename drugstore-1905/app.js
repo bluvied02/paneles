@@ -45,7 +45,7 @@ const S = {
 // La version de la app. Al abrirla (o al volver a ella) se fija si hay una
 // nueva publicada y, si la hay, se recarga sola: en el iPhone la app queda
 // abierta en memoria y si no, seguiria la vieja por dias.
-const VERSION_APP = '12.2'
+const VERSION_APP = '12.5'
 const $app = document.getElementById('app')
 const $tooltip = document.getElementById('tooltip')
 
@@ -399,7 +399,8 @@ const NOMBRE_ORDEN = {
   cliente_guardar: 'Cliente', cliente_pago: 'Pago de cliente', cliente_deuda: 'Deuda de cliente', gasto: 'Gasto',
   proveedor_guardar: 'Proveedor', deuda_guardar: 'Deuda con proveedor', deuda_pagar: 'Pago a proveedor',
   transferencia_salida: 'Pasar a otra sucursal', conteo: 'Conteo de stock', recepcion: 'Mercadería recibida',
-  producto_foto: 'Foto del producto', venta_celular: 'Venta', modo_emergencia: 'Modo emergencia', encargo_guardar: 'Encargo', encargo_estado: 'Encargo'
+  producto_foto: 'Foto del producto', venta_celular: 'Venta', modo_emergencia: 'Modo emergencia', encargo_guardar: 'Encargo', encargo_estado: 'Encargo',
+  mayorista_guardar: 'Presupuesto mayorista', mayorista_estado: 'Presupuesto mayorista', mayorista_venta: 'Venta mayorista'
 }
 
 async function cargarCola () {
@@ -701,7 +702,7 @@ function seccion (id, def) { SECCIONES[id] = def }
 
 // Dueño o encargado. El encargado ve lo del local; la plata, los costos y los
 // precios son del dueño. (La caja revisa lo mismo antes de aplicar cada orden.)
-const SOLO_DUENIO = ['reportes', 'caja', 'gastos', 'apagar', 'proveedores', 'promos', 'cierres', 'historial', 'ventas']
+const SOLO_DUENIO = ['reportes', 'caja', 'gastos', 'apagar', 'proveedores', 'promos', 'cierres', 'historial', 'ventas', 'mayorista', 'metricas']
 const PERMISOS_ENCARGADO = ['verStock', 'ajustarStock', 'contar', 'recibir', 'pasar', 'clientes', 'productoNuevo', 'fotos', 'pedidosClientes', 'vender']
 // El empleado: vender y contar stock, nada mas (y solo con el turno abierto).
 const PERMISOS_EMPLEADO = ['contar', 'vender']
