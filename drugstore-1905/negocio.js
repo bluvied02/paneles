@@ -149,7 +149,7 @@ async function secVentas () {
         el('button', { clase: E.dia === 'ayer' ? 'activo' : '', onclick: () => { E.dia = 'ayer'; render() } }, 'Ayer'),
         el('button', { clase: E.dia === '7dias' ? 'activo' : '', onclick: () => { E.dia = '7dias'; render() } }, '7 días')),
       elegir),
-    esperando.length ? el('div', { clase: 'aviso' }, el('b', {}, 'Pidiéndole las ventas a la caja…'), 'Ese día es de hace más de dos semanas: la caja lo manda en menos de un minuto (tiene que estar prendida).') : null,
+    esperando.length ? el('div', { clase: 'aviso' }, el('b', {}, 'Pidiéndole las ventas a la caja…'), 'La caja todavía no los había subido: los manda en menos de un minuto. Tiene que estar prendida y con la versión 0.29 o más nueva (se instala sola al cerrar el turno).') : null,
     errores.length ? el('div', { clase: 'aviso mal' }, el('b', {}, 'No se pudieron traer'), errores.map((r) => r.error).join(' · ')) : null,
     el('div', { clase: 'kpis' },
       kpi('Vendido', plata(total), validas.length + ' ventas', { clase: 'principal' }),
@@ -551,14 +551,14 @@ async function secCaja () {
           kpi('En el cajón', plata(c.esperado), 'efectivo que tendría que haber', { clase: 'principal' }),
           kpi('Vendido en el turno', plata(c.ventaTotal), c.tickets + ' ventas'),
           kpi('Fondo inicial', plata(c.fondoFijo)),
-          kpi('Salió de la caja', plata((c.gastos || 0) + (c.retiros || 0)), 'gastos ' + plata(c.gastos) + ' · retiros ' + plata(c.retiros))),
+          kpi('Salió de la caja', plata((c.gastos || 0) + (c.retiros || 0)), 'gastos ' + plata(c.gastos) + ' · retiros ' + plata(c.retiros) + (c.ingresos ? ' · entraron ' + plata(c.ingresos) : ''))),
         el('div', { clase: 'grilla' },
           el('div', { clase: 'tarjeta' }, el('h2', {}, 'Por forma de pago'),
             c.porMedio.length ? ranking(c.porMedio.map((m) => ({ n: m.nombre, texto: plata(m.importe), v: m.importe }))) : el('div', { clase: 'sub' }, 'Sin ventas todavía.')),
           el('div', { clase: 'tarjeta sin-relleno' }, el('h2', {}, 'Movimientos de caja'),
             movs.length ? el('div', { clase: 'lista' }, movs.map((m) => el('div', { clase: 'item' },
-              el('div', { clase: 'cuerpo' }, el('b', {}, m.texto || m.tipo), el('div', { clase: 'sub' }, hora(m.ts) + ' · ' + ({ gasto: 'Gasto', retiro: 'Retiro', cobranza: 'Cobro de cuenta' }[m.tipo] || m.tipo) + (m.usuario ? ' · ' + m.usuario : '') + (m.categoria ? ' · ' + m.categoria : ''))),
-              el('div', { clase: 'fin' }, el('b', { clase: 'num ' + (m.importe < 0 ? 'rojo' : 'verde') }, (m.importe < 0 ? '−' : '+') + plata(Math.abs(m.importe)).replace('−', '')))))) : el('p', { clase: 'sub', estilo: { padding: '0 16px' } }, 'Sin gastos, retiros ni cobros en este turno.'))))
+              el('div', { clase: 'cuerpo' }, el('b', {}, m.texto || m.tipo), el('div', { clase: 'sub' }, hora(m.ts) + ' · ' + ({ gasto: 'Gasto', retiro: 'Retiro', ingreso: 'Ingreso', cobranza: 'Cobro de cuenta' }[m.tipo] || m.tipo) + (m.usuario ? ' · ' + m.usuario : '') + (m.categoria ? ' · ' + m.categoria : ''))),
+              el('div', { clase: 'fin' }, el('b', { clase: 'num ' + (m.importe < 0 ? 'rojo' : 'verde') }, (m.importe < 0 ? '−' : '+') + plata(Math.abs(m.importe)).replace('−', '')))))) : el('p', { clase: 'sub', estilo: { padding: '0 16px' } }, 'Sin gastos, retiros, ingresos ni cobros en este turno.'))))
   pintarSeccion('caja',
     cabecera('Caja', nombreSucursal(S.sucursal)),
     // Si la compu no anda, el dueño deja vender desde el celular aunque nadie haya abierto el turno.
@@ -567,7 +567,7 @@ async function secCaja () {
       await mandarOrden(S.sucursal, 'modo_emergencia', { horas: 8 }, { texto: 'Modo emergencia' })
     } }, icono('faltantes'), 'La compu no anda: modo emergencia'),
     turno,
-    el('p', { clase: 'sub' }, 'Los gastos y retiros de la caja se cargan en el local, donde está la plata. El que está en el mostrador no ve estos totales (caja ciega).'),
+    el('p', { clase: 'sub' }, 'Los gastos, retiros e ingresos de la caja se cargan en el local, donde está la plata. El que está en el mostrador no ve estos totales (caja ciega).'),
     el('div', { clase: 'tarjeta-cab', estilo: { marginTop: '16px' } }, el('h2', {}, 'Cierres anteriores'), el('button', { clase: 'btn chico', onclick: () => ir('cierres') }, 'Ver todos')),
     el('div', { clase: 'tarjeta sin-relleno' }, cierres.length ? el('div', { clase: 'lista' }, cierres.slice(0, 8).map(itemCierre)) : vacio('Todavía no hay cierres.')))
 }
@@ -592,6 +592,7 @@ function itemCierre (c) {
       c.entregado != null ? el('div', { clase: 'fila' }, el('span', { clase: 'tenue' }, 'Entregó'), el('b', { clase: 'num' }, plata(c.entregado))) : null,
       c.gastos ? el('div', { clase: 'fila' }, el('span', { clase: 'tenue' }, 'Gastos de caja'), el('b', { clase: 'num' }, plata(c.gastos))) : null,
       c.retiros ? el('div', { clase: 'fila' }, el('span', { clase: 'tenue' }, 'Retiros'), el('b', { clase: 'num' }, plata(c.retiros))) : null,
+      c.ingresos ? el('div', { clase: 'fila' }, el('span', { clase: 'tenue' }, 'Ingresos de plata'), el('b', { clase: 'num' }, plata(c.ingresos))) : null,
       (c.porMedio || []).length ? el('h3', {}, 'Por forma de pago') : null,
       (c.porMedio || []).map((m) => el('div', { clase: 'fila' }, el('span', { clase: 'tenue' }, m.nombre), el('b', { clase: 'num' }, plata(m.importe)))))
   }) },
