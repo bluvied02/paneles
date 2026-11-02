@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tienda</title>
-<meta name="description" content="Elegí los productos y mandá el pedido por WhatsApp.">
+<meta name="description" content="Elegí los productos y mandá el pedido al local.">
 <link rel="icon" href="icono-192.png">
 <style>
 :root {
@@ -21,7 +21,7 @@ h1 { font-size: 22px; margin: 0; }
 .sub { color: var(--tenue); font-size: 13px; }
 .mensaje { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 14px; }
 .barra { position: sticky; top: 0; z-index: 5; background: var(--fondo); padding: 8px 16px; max-width: 760px; margin: 0 auto; }
-input[type=search], input[type=text], textarea { width: 100%; font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); }
+input[type=search], input[type=text], input[type=tel], textarea { width: 100%; font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); }
 .chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; scrollbar-width: none; }
 .chip { flex: none; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
 .chip.activo { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
@@ -69,7 +69,9 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
 <script>
 'use strict'
 // La tienda online: lee el archivo publico que deja la caja de la sucursal y
-// arma el pedido para mandarlo por WhatsApp. No tiene claves ni escribe nada.
+// arma el pedido. Si la caja recibe pedidos (datos.pedidos), lo deja en la nube
+// con la clave publica (pos_tienda_pedido: solo puede dejar pedidos, con tope)
+// y entra solo a Encargos; si eso falla, o si no los recibe, va por WhatsApp.
 ;(function () {
   const params = new URLSearchParams((location.hash || '').slice(1) || location.search.slice(1))
   const proyecto = String(params.get('p') || '').replace(/[^a-z0-9-]/gi, '')
@@ -96,7 +98,10 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
   let pedido = leer(CLAVE + '.pedido', {})
   let categoria = ''
   let mostrar = 80
-  const cliente = leer(CLAVE + '.cliente', { nombre: '', entrega: 'retiro', direccion: '' })
+  const cliente = leer(CLAVE + '.cliente', { nombre: '', telefono: '', entrega: 'retiro', direccion: '' })
+  // El pedido que se esta mandando: si se corta y se toca de nuevo, va con el
+  // mismo numero y la caja no lo carga dos veces.
+  let enviando = false
 
   const fallar = (texto) => { $('cab').replaceChildren(el('h1', {}, 'Tienda'), el('p', { clase: 'sub' }, texto)) }
 
@@ -110,7 +115,7 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
       datos = await r.json()
     } catch (e) { return fallar('No se pudo abrir la tienda. Revisá la conexión y probá de nuevo.') }
     if (!datos || datos.apagada || !Array.isArray(datos.productos)) return fallar('Esta tienda no está disponible por ahora.')
-    productos = datos.productos.map((p, i) => ({ i, nombre: p[0], precio: p[1], categoria: p[2] || 'Otros', foto: p[3], hay: !!p[4], busca: normal(p[0] + ' ' + p[2]) }))
+    productos = datos.productos.map((p, i) => ({ i, nombre: p[0], precio: p[1], categoria: p[2] || 'Otros', foto: p[3], hay: !!p[4], id: p[5] || null, busca: normal(p[0] + ' ' + p[2]) }))
     // Lo guardado de otra visita: solo lo que sigue estando, al precio de hoy.
     const porNombre = {}
     for (const p of productos) porNombre[p.nombre] = p
@@ -122,7 +127,7 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
       el('h1', {}, datos.negocio || 'Tienda'),
       el('div', { clase: 'sub' }, [datos.sucursal, datos.direccion].filter(Boolean).join(' · ')),
       datos.mensaje ? el('div', { clase: 'mensaje' }, datos.mensaje) : null,
-      !datos.whatsapp ? el('div', { clase: 'mensaje' }, 'Esta tienda todavía no tiene WhatsApp para recibir pedidos.') : null].filter(Boolean))
+      !datos.whatsapp && !datos.pedidos ? el('div', { clase: 'mensaje' }, 'Esta tienda todavía no tiene WhatsApp para recibir pedidos.') : null].filter(Boolean))
     $('barra').hidden = false
     pintarChips()
     pintarLista()
@@ -183,6 +188,9 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
   function abrirPedido () {
     const cuerpo = $('hojaCuerpo')
     const nombre = el('input', { type: 'text', maxlength: '60', placeholder: 'Tu nombre', value: cliente.nombre })
+    const telefono = el('input', { type: 'tel', maxlength: '20', placeholder: 'Ej: 351 555-1234', autocomplete: 'tel', value: cliente.telefono || '' })
+    const campoTel = el('div', { clase: 'campo' }, el('label', {}, 'Tu WhatsApp (para confirmarte el pedido)'), telefono)
+    campoTel.hidden = !datos.pedidos
     const direccion = el('input', { type: 'text', maxlength: '120', placeholder: 'Calle, número, piso', value: cliente.direccion })
     const nota = el('textarea', { rows: '2', maxlength: '300', placeholder: 'Algo más (opcional)' })
     const campoDir = el('div', { clase: 'campo' }, el('label', {}, 'Dirección de envío'), direccion)
@@ -201,29 +209,93 @@ main { max-width: 760px; margin: 0 auto; padding: 0 16px; }
         paso(x.p, pintarL))))
       tot.replaceChildren(el('span', {}, 'Total aproximado'), el('span', {}, pesos(totalPedido())))
     }
-    const enviar = () => {
-      cliente.nombre = nombre.value.trim()
-      cliente.direccion = direccion.value.trim()
-      guardar(CLAVE + '.cliente', cliente)
-      if (!cliente.nombre) { nombre.focus(); nombre.placeholder = 'Poné tu nombre'; return }
-      if (cliente.entrega === 'envio' && !cliente.direccion) { direccion.focus(); return }
-      if (!datos.whatsapp) return alert('Esta tienda todavía no tiene WhatsApp para recibir pedidos.')
-      const t = ['Hola! Quiero hacer este pedido' + (datos.sucursal ? ' (' + datos.sucursal + ')' : '') + ':', '']
+    const textoWhatsApp = (numero) => {
+      const t = ['Hola! Quiero hacer este pedido' + (datos.sucursal ? ' (' + datos.sucursal + ')' : '') + (numero ? ' (ya lo mandé por la tienda)' : '') + ':', '']
       for (const x of lineas()) t.push(x.c + ' x ' + x.p.nombre + ' — ' + pesos(x.p.precio * x.c))
       t.push('', 'Total aproximado: ' + pesos(totalPedido()), 'Nombre: ' + cliente.nombre)
       t.push(cliente.entrega === 'envio' ? 'Envío a: ' + cliente.direccion : 'Lo retiro en el local')
       if (nota.value.trim()) t.push('Nota: ' + nota.value.trim())
-      location.href = 'https://wa.me/' + datos.whatsapp + '?text=' + encodeURIComponent(t.join('\n'))
+      return 'https://wa.me/' + datos.whatsapp + '?text=' + encodeURIComponent(t.join('\n'))
     }
+    // Directo a la caja. Devuelve 'ok' o por que no entro.
+    const mandarDirecto = async () => {
+      let pid = leer(CLAVE + '.enviando', '')
+      const huella = JSON.stringify([lineas().map((x) => [x.p.nombre, x.c]), cliente, nota.value.trim()])
+      if (!pid || leer(CLAVE + '.huella', '') !== huella) {
+        pid = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => (Math.random() * 16 | 0).toString(16))
+        guardar(CLAVE + '.enviando', pid)
+        guardar(CLAVE + '.huella', huella)
+      }
+      const pedidoNube = {
+        items: lineas().map((x) => ({ id: x.p.id, n: x.p.nombre, c: x.c })),
+        nombre: cliente.nombre,
+        telefono: cliente.telefono,
+        entrega: cliente.entrega === 'envio' ? 'envio' : 'retira',
+        direccion: cliente.entrega === 'envio' ? cliente.direccion : '',
+        nota: nota.value.trim(),
+        total: totalPedido()
+      }
+      try {
+        const r = await fetch('https://' + proyecto + '.supabase.co/rest/v1/rpc/pos_tienda_pedido', {
+          method: 'POST',
+          headers: { apikey: datos.clave, Authorization: 'Bearer ' + datos.clave, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pid, suc: sucursal, pedido: pedidoNube })
+        })
+        if (!r.ok) return 'error'
+        return String(await r.json())
+      } catch (e) { return 'sin-internet' }
+    }
+    const listo = (tel) => {
+      const porWhatsApp = datos.whatsapp ? textoWhatsApp(true) : ''
+      pedido = {}
+      guardar(CLAVE + '.pedido', pedido)
+      guardar(CLAVE + '.enviando', '')
+      pintarPie()
+      pintarLista()
+      cuerpo.replaceChildren(
+        el('h2', { style: 'margin:0 0 8px;font-size:21px' }, '¡Listo! Tu pedido llegó al local'),
+        el('p', {}, 'Te vamos a escribir al ' + tel + ' para confirmarte el total' + (cliente.entrega === 'envio' ? ' y el envío.' : ' y cuándo pasar a buscarlo.')),
+        datos.puntos ? el('p', { clase: 'aviso' }, 'Con tu teléfono sumás puntos cuando lo pagás.') : null,
+        porWhatsApp ? el('a', { clase: 'btn whatsapp', href: porWhatsApp, style: 'display:block;text-align:center;text-decoration:none;margin-top:10px' }, 'Avisar también por WhatsApp') : null,
+        el('button', { clase: 'btn', style: 'width:100%;margin-top:10px', onclick: cerrarHoja }, 'Volver a la tienda'))
+    }
+    const enviar = async () => {
+      if (enviando) return
+      cliente.nombre = nombre.value.trim()
+      cliente.telefono = telefono.value.trim()
+      cliente.direccion = direccion.value.trim()
+      guardar(CLAVE + '.cliente', cliente)
+      if (!cliente.nombre) { nombre.focus(); nombre.placeholder = 'Poné tu nombre'; return }
+      if (datos.pedidos && cliente.telefono.replace(/\D/g, '').length < 8) { telefono.focus(); telefono.placeholder = 'Poné tu teléfono con la característica'; return }
+      if (cliente.entrega === 'envio' && !cliente.direccion) { direccion.focus(); return }
+      if (datos.pedidos && datos.clave) {
+        enviando = true
+        boton.disabled = true
+        boton.textContent = 'Mandando…'
+        const r = await mandarDirecto()
+        enviando = false
+        boton.disabled = false
+        boton.textContent = textoBoton
+        if (r === 'ok') return listo(cliente.telefono)
+        if (!datos.whatsapp) return alert(r === 'muchos' ? 'Hay muchos pedidos en este momento: probá de nuevo en unos minutos.' : 'No se pudo mandar el pedido. Revisá la conexión y probá de nuevo.')
+      }
+      if (!datos.whatsapp) return alert('Esta tienda todavía no tiene WhatsApp para recibir pedidos.')
+      location.href = textoWhatsApp(false)
+    }
+    const textoBoton = datos.pedidos ? 'Enviar pedido' : 'Enviar pedido por WhatsApp'
+    const boton = el('button', { clase: 'btn whatsapp', onclick: enviar }, textoBoton)
     cuerpo.replaceChildren(
       el('div', { style: 'display:flex;justify-content:space-between;align-items:center' }, el('h2', { style: 'margin:0;font-size:19px' }, 'Tu pedido'), el('button', { clase: 'btn', onclick: cerrarHoja }, 'Seguir eligiendo')),
       listaL, tot,
       el('div', { clase: 'campo' }, el('label', {}, 'Nombre'), nombre),
+      campoTel,
       el('div', { clase: 'campo' }, seg),
       campoDir,
       el('div', { clase: 'campo' }, nota),
-      el('button', { clase: 'btn whatsapp', onclick: enviar }, 'Enviar pedido por WhatsApp'),
-      el('p', { clase: 'aviso' }, 'Se abre WhatsApp con el pedido escrito: solo tenés que apretar enviar. El local te confirma el total.'))
+      boton,
+      el('p', { clase: 'aviso' }, datos.pedidos
+        ? 'El pedido llega directo al local y te escriben para confirmarte el total.' + (datos.puntos ? ' Con tu teléfono sumás puntos.' : '')
+        : 'Se abre WhatsApp con el pedido escrito: solo tenés que apretar enviar. El local te confirma el total.'))
     pintarSeg()
     pintarL()
     $('hoja').classList.add('abierta')
