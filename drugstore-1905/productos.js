@@ -63,7 +63,57 @@ function hojaNoEncontrado (codigo, enOtra) {
       el('p', { clase: 'tenue', estilo: { textAlign: 'center' } }, 'No está cargado en ' + nombreSucursal(S.sucursal) + '.'),
       otro ? el('div', { clase: 'aviso info' }, el('b', {}, 'Existe en ' + nombreSucursal(enOtra.sucursalId)), otro.descripcion + ' · ' + plata(otro.precio)) : null,
       el('button', { clase: 'btn primario ancho grande', onclick: () => { cerrarHoja(); hojaNuevoProducto({ codigo, descripcion: otro ? otro.descripcion : '', precio: otro ? otro.precio : null, costo: otro ? otro.costo : null }) } }, icono('sumar'), otro ? 'Crear igual en esta sucursal' : 'Crear producto'),
+      // Muchas veces es un producto que ya esta, con un codigo nuevo (el
+      // proveedor cambio el envase): crear otro lo repetia, con el stock partido.
+      el('button', { clase: 'btn ancho grande', estilo: { marginTop: '8px' }, onclick: () => { cerrarHoja(); luegoDeAtras(() => hojaAgregarCodigo(codigo)) } }, icono('editar'), 'Es un producto que ya está: agregarle este código'),
       el('button', { clase: 'btn ancho', estilo: { marginTop: '8px' }, onclick: () => { cerrarHoja(); escanearYAbrir() } }, icono('escanear'), 'Escanear otro'))
+  })
+}
+
+// Buscar el producto que ya existe y agregarle el codigo que no estaba.
+async function hojaAgregarCodigo (codigo) {
+  const suc = S.sucursal
+  const lista = await leerCatalogo(suc).catch(() => [])
+  abrirHoja({
+    titulo: 'Agregar el código ' + codigo,
+    completa: true,
+    cuerpo: el('div', {},
+      el('p', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, 'Buscá el producto: se le agrega el código ' + codigo + ' y sigue teniendo los que tenía. El stock no cambia.'),
+      buscadorParaAgregar(lista, (p) => {
+        if (!confirm('¿Agregarle el código ' + codigo + ' a "' + p.descripcion + '"?')) return
+        cerrarHoja()
+        marcarPendiente(suc, p.id, { codigos: (p.codigos || []).concat([codigo]) })
+        mandarOrden(suc, 'producto_codigo', { productoId: p.id, agregar: codigo }, { texto: 'Código nuevo de ' + p.descripcion, alTerminar: refrescarSeccion })
+      }))
+  })
+}
+
+// Los precios que esperan una decision porque subio el costo al recibir
+// (antes solo se veian en la compu, en Recibir).
+async function hojaPreciosPendientes (suc) {
+  suc = suc || S.sucursal
+  const lista = datosDe(await leerDatos('precios_pendientes', true).catch(() => ({})), suc) || []
+  if (!lista.length) return toast('No hay precios para revisar', 'ok')
+  const decididos = new Set()
+  const zona = el('div', { clase: 'lista' })
+  const pintar = () => poner(zona, lista.filter((x) => !decididos.has(x.productoId)).map((x) => {
+    const precio = el('input', { type: 'text', inputmode: 'decimal', clase: 'num', valor: plataExacta(x.precioSugerido || x.precioActual), estilo: { width: '110px' } })
+    const decidir = (datos, texto) => { decididos.add(x.productoId); mandarOrden(suc, 'precio_revisar', Object.assign({ productoId: x.productoId }, datos), { texto, callado: true }); pintar() }
+    return el('div', { clase: 'item', estilo: { flexWrap: 'wrap' } },
+      el('div', { clase: 'cuerpo' },
+        el('b', {}, x.descripcion),
+        el('div', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, 'Costo ' + plata(x.costoAnterior) + ' → ' + plata(x.costoNuevo) + (x.subioBasis ? ' (' + (x.subioBasis > 0 ? '+' : '') + pct(x.subioBasis) + ')' : '') + ' · hoy vale ' + plata(x.precioActual))),
+      el('div', { clase: 'fila', estilo: { width: '100%', gap: '8px', marginTop: '6px', alignItems: 'center', flexWrap: 'wrap' } },
+        el('label', { clase: 'sub fila', estilo: { gap: '4px', alignItems: 'center' } }, '$', precio),
+        el('button', { clase: 'btn chico primario', onclick: () => { const c = aCentavos(precio.value); if (!(c > 0)) return toast('El precio no es válido', 'mal'); decidir({ precio: c }, 'Precio de ' + x.descripcion) } }, 'Ponerle este precio'),
+        el('button', { clase: 'btn chico', onclick: () => decidir({ dejar: true }, 'Dejar el precio de ' + x.descripcion) }, 'Dejarlo como está')))
+  }).concat(decididos.size === lista.length ? [vacio('Listo: no quedan precios para revisar.', 'ok')] : []))
+  pintar()
+  abrirHoja({
+    titulo: 'Subió el costo: ¿cambiás el precio?',
+    completa: true,
+    cuerpo: el('div', {}, el('p', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, 'El precio propuesto mantiene la ganancia que tenía (o la del rubro). Cambialo si querés antes de ponerlo.'), zona),
+    alCerrar: () => { if (decididos.size) { S.cache = {}; refrescarSeccion() } }
   })
 }
 
@@ -75,6 +125,7 @@ const FILTROS_PRODUCTO = [
   ['sin', 'Sin stock', (p) => p.activo !== false && p.stock <= 0],
   ['negativo', 'En negativo', (p) => p.activo !== false && p.stock < 0],
   ['sinCosto', 'Sin costo', (p) => p.activo !== false && !p.costo],
+  ['pierden', 'Pierden plata', (p) => p.activo !== false && p.costo > 0 && p.precio > 0 && p.precio < p.costo],
   ['sinProv', 'Sin proveedor', (p) => p.activo !== false && !p.proveedorId],
   ['quieto', 'Sin ventas 30 días', (p) => p.activo !== false && !p.vendido30 && p.stock > 0],
   ['baja', 'Dados de baja', (p) => p.activo === false]
@@ -123,7 +174,7 @@ async function secProductos (params) {
       .sort((ORDENES_PRODUCTO.find((x) => x[0] === E.orden) || ORDENES_PRODUCTO[0])[2])
   }
   const pintarFiltros = () => {
-    poner(filtrosZona, FILTROS_PRODUCTO.filter(([id]) => id !== 'sinCosto' || puede('verCostos')).map(([id, t, fn]) => el('button', { clase: 'filtro' + (E.filtro === id ? ' activo' : ''), onclick: () => { E.filtro = id; limite = 60; pintarFiltros(); pintar() } },
+    poner(filtrosZona, FILTROS_PRODUCTO.filter(([id]) => (id !== 'sinCosto' && id !== 'pierden') || puede('verCostos')).map(([id, t, fn]) => el('button', { clase: 'filtro' + (E.filtro === id ? ' activo' : ''), onclick: () => { E.filtro = id; limite = 60; pintarFiltros(); pintar() } },
       t, id !== 'todos' ? el('span', { clase: 'n' }, String(lista.filter(fn).length)) : null)))
   }
   const pintarSel = () => {
@@ -161,17 +212,34 @@ async function secProductos (params) {
   pintarFiltros()
   pintarSel()
   pintar()
+  // Los ultimos aumentos en tanda, con "Volver atrás" (antes, solo en la compu).
+  const zonaAumentos = el('div', {})
+  if (puede('editarPrecios')) {
+    const aum = (datosDe(await leerDatos('aumentos').catch(() => ({}))) || []).slice(0, 5)
+    if (aum.length) {
+      poner(zonaAumentos, el('div', { clase: 'sub', estilo: { margin: '4px 0' } }, 'Últimos aumentos'), el('div', { clase: 'lista' }, aum.map((a) => el('div', { clase: 'item' },
+        el('div', { clase: 'cuerpo' }, el('b', {}, pct(a.porcentajeBasis) + ' · ' + a.productos + ' productos'), el('div', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, fechaHora(a.ts) + (a.usuario ? ' · ' + a.usuario : '') + (a.alcance ? ' · ' + a.alcance : ''))),
+        el('div', { clase: 'fin' }, a.revertido ? el('span', { clase: 'chip' }, 'Vuelto atrás') : el('button', { clase: 'btn chico', onclick: () => {
+          if (!confirm('¿Volver atrás este aumento? Cada producto vuelve al precio que tenía, salvo los que se cambiaron a mano después.')) return
+          mandarOrden(S.sucursal, 'aumento_deshacer', { id: a.id }, { texto: 'Volver atrás un aumento', alTerminar: refrescarSeccion })
+        } }, 'Volver atrás'))))))
+    }
+  }
 
+  const pendientesPrecio = puede('editarPrecios') ? (datosDe(await leerDatos('precios_pendientes').catch(() => ({}))) || []) : []
   pintarSeccion('productos',
     cabecera('Productos', nombreSucursal(S.sucursal) + ' · ' + lista.filter((p) => p.activo !== false).length + ' activos',
       el('button', { clase: 'btn primario', onclick: () => hojaNuevoProducto({}) }, icono('sumar'), 'Nuevo')),
+    pendientesPrecio.length ? el('div', { clase: 'alerta-fila alerta', onclick: () => hojaPreciosPendientes(), estilo: { marginBottom: '10px' } },
+      el('span', { clase: 'ico' }, icono('gastos')), el('div', { clase: 'txt' }, el('b', {}, pendientesPrecio.length + (pendientesPrecio.length === 1 ? ' precio para revisar' : ' precios para revisar')), el('span', { clase: 'sub' }, 'Subió el costo al recibir: decidí si cambiás el precio')), icono('flecha')) : null,
     el('div', { clase: 'buscador' }, icono('buscar'), busca,
       el('button', { clase: 'btn-ico', 'aria-label': 'Escanear', onclick: async () => { const c = await leerCodigo({ titulo: 'Buscar por código' }); if (c) { E.busca = c; busca.value = c; pintar(); const p = lista.find((x) => (x.codigos || []).includes(c)); if (p) hojaProducto(p); else hojaNoEncontrado(c) } } }, icono('escanear'))),
     filtrosZona,
     el('details', { clase: 'detalles' }, el('summary', {}, 'Ordenar, familia, proveedor y aumentos'),
       el('div', { clase: 'campo' }, 'Ordenar', selOrden),
       el('div', { clase: 'dos' }, el('div', { clase: 'campo' }, 'Familia', selFamilia), el('div', { clase: 'campo' }, 'Proveedor', selProv)),
-      puede('editarPrecios') ? el('button', { clase: 'btn ancho', estilo: { marginBottom: '12px' }, onclick: () => hojaAumento(S.sucursal, proveedores, rubros, lista) }, 'Aumentar precios por proveedor o familia') : null),
+      puede('editarPrecios') ? el('button', { clase: 'btn ancho', estilo: { marginBottom: '12px' }, onclick: () => hojaAumento(S.sucursal, proveedores, rubros, lista) }, 'Aumentar precios por proveedor o familia') : null,
+      puede('editarPrecios') ? zonaAumentos : null),
     el('div', { clase: 'tarjeta-cab' }, cuenta,
       el('div', { clase: 'chips' },
         botonRapido,
@@ -335,9 +403,11 @@ function refrescarSeccion () { if (!S.hojas.length) render() }
 
 // --- ajustar el stock -----------------------------------------------------------
 
+// "Mercadería recibida" y "Pérdida" no van aca: lo recibido asi no cerraba el
+// pedido ni tomaba el costo, y la perdida no salia en el informe de Pérdidas.
+// Esos dos llevan a su pantalla.
 const MOTIVOS_STOCK = [
-  ['Ajuste manual', 'ajuste'], ['Diferencia de inventario', 'ajuste'], ['Mercadería recibida', 'ajuste'],
-  ['Pérdida', 'ajuste'], ['Rotura', 'rotura'], ['Vencimiento', 'vencimiento'], ['Otro', 'ajuste']
+  ['Ajuste manual', 'ajuste'], ['Diferencia de inventario', 'ajuste'], ['Rotura', 'rotura'], ['Vencimiento', 'vencimiento'], ['Otro', 'ajuste']
 ]
 
 function hojaAjusteStock (p, sucursalId) {
@@ -370,6 +440,9 @@ function hojaAjusteStock (p, sucursalId) {
         [-10, -5, -1, 1, 5, 10].map((n) => el('button', { clase: 'btn', onclick: () => paso(n) }, (n > 0 ? '+' : '−') + Math.abs(n)))),
       el('label', { clase: 'campo' }, 'O el stock exacto que hay', exacto),
       el('div', { clase: 'campo' }, 'Motivo', motivos, otro),
+      el('div', { clase: 'chips', estilo: { marginBottom: '8px' } },
+        seccionPermitida('recibir') && puede('recibir') ? el('button', { clase: 'btn chico', onclick: () => { cerrarHoja(); luegoDeAtras(() => ir('recibir')) } }, '¿Llegó mercadería? Recibila') : null,
+        seccionPermitida('perdidas') ? el('button', { clase: 'btn chico', onclick: () => { cerrarHoja(); luegoDeAtras(() => ir('perdidas')) } }, '¿Se tiró algo? Pérdidas') : null),
       el('p', { clase: 'sub' }, 'Lo aplica la caja de ' + nombreSucursal(suc) + '. Si sumás o restás, se aplica sobre lo que haya en ese momento (si se vendió mientras tanto, no se pierde). Queda registrado quién, cuándo y por qué.')),
     botones: [{ texto: 'Confirmar', primario: true, alTocar: async () => {
       const ex = aMilesimas(exacto.value)
@@ -381,7 +454,8 @@ function hojaAjusteStock (p, sucursalId) {
       cerrarHoja()
       const nuevo = tieneExacto ? ex : p.stock + suma
       marcarPendiente(suc, p.id, { stock: nuevo })
-      await mandarOrden(suc, 'stock', Object.assign({ productoId: p.id, motivo: texto, tipo }, tieneExacto ? { cantidad: ex } : { suma }),
+      // El exacto lleva la hora: lo que se venda hasta que la caja lo aplique se descuenta.
+      await mandarOrden(suc, 'stock', Object.assign({ productoId: p.id, motivo: texto, tipo }, tieneExacto ? { cantidad: ex, ts: new Date().toISOString() } : { suma }),
         { texto: 'Stock de ' + p.descripcion, alTerminar: refrescarSeccion })
       refrescarSeccion()
     } }]
@@ -399,20 +473,43 @@ async function hojaEditarProducto (p, sucursalId) {
   const precio = el('input', { type: 'text', inputmode: 'decimal', valor: plataExacta(p.precio) })
   const costo = el('input', { type: 'text', inputmode: 'decimal', valor: p.costo ? plataExacta(p.costo) : '' })
   const minimo = el('input', { type: 'text', inputmode: 'decimal', valor: p.minimo ? unidades(p.minimo) : '' })
+  // Cuantas trae la caja del proveedor: sirve para el pedido (vacio o 1 = suelto).
+  const bulto = el('input', { type: 'text', inputmode: 'numeric', valor: p.bulto > 1 ? String(p.bulto) : '', placeholder: 'Suelto' })
   const prov = el('select', {}, el('option', { valor: '' }, 'Sin proveedor'), proveedores.map((x) => el('option', { valor: x.id }, x.nombre)))
   prov.value = p.proveedorId || ''
   const rub = selectorRubro(rubros, p.rubroId)
   const activo = el('select', {}, el('option', { valor: '1' }, 'Se vende'), el('option', { valor: '0' }, 'Dado de baja'))
   activo.value = p.activo === false ? '0' : '1'
+  // Los codigos: se saca uno que sobra o se agrega otro (se mandan aparte).
+  const zonaCodigos = el('div', {})
+  const pintarCodigos = () => poner(zonaCodigos,
+    el('div', { clase: 'chips' }, (p.codigos || []).map((c) => el('span', { clase: 'chip num' }, c,
+      (p.codigos || []).length > 1 ? el('button', { 'aria-label': 'Sacar', estilo: { background: 'none', border: 0, cursor: 'pointer', color: 'inherit', padding: '0 0 0 6px' }, onclick: () => {
+        if (!confirm('¿Sacarle el código ' + c + '?')) return
+        p.codigos = p.codigos.filter((x) => x !== c)
+        mandarOrden(suc, 'producto_codigo', { productoId: p.id, quitar: c }, { texto: 'Sacar código de ' + p.descripcion })
+        pintarCodigos()
+      } }, '×') : null))),
+    el('button', { clase: 'btn chico', estilo: { marginTop: '6px' }, onclick: async () => {
+      const c = await leerCodigo({ titulo: 'Código nuevo de ' + p.descripcion })
+      if (!c) return
+      if ((p.codigos || []).includes(c)) return toast('Ya tiene ese código', '', 2)
+      p.codigos = (p.codigos || []).concat([c])
+      mandarOrden(suc, 'producto_codigo', { productoId: p.id, agregar: c }, { texto: 'Código nuevo de ' + p.descripcion })
+      pintarCodigos()
+    } }, icono('escanear'), 'Agregar otro código'))
+  pintarCodigos()
   abrirHoja({
     titulo: 'Editar · ' + p.descripcion,
     completa: true,
     cuerpo: el('div', {},
       el('label', { clase: 'campo' }, 'Nombre', nombre),
       el('div', { clase: 'dos' }, el('label', { clase: 'campo' }, 'Precio ($)', precio), el('label', { clase: 'campo' }, 'Costo ($)', costo)),
-      el('div', { clase: 'dos' }, el('label', { clase: 'campo' }, 'Stock mínimo', minimo), el('label', { clase: 'campo' }, 'Estado', activo)),
+      el('div', { clase: 'dos' }, el('label', { clase: 'campo' }, 'Stock mínimo', minimo), el('label', { clase: 'campo' }, 'Unidades por caja', bulto)),
+      el('label', { clase: 'campo' }, 'Estado', activo),
       el('label', { clase: 'campo' }, 'Familia / rubro', rub),
       el('label', { clase: 'campo' }, 'Proveedor', prov),
+      el('div', { clase: 'campo' }, 'Códigos de barras', zonaCodigos),
       el('p', { clase: 'sub' }, 'El stock se cambia con "Ajustar stock", así queda el motivo.')),
     botones: [{ texto: 'Guardar', primario: true, alTocar: async () => {
       const cambios = {}
@@ -428,13 +525,16 @@ async function hojaEditarProducto (p, sucursalId) {
       const mi = minimo.value.trim() ? aMilesimas(minimo.value) : 0
       if (!Number.isFinite(mi) || mi < 0) return toast('El mínimo no es válido', 'mal')
       if (mi !== (p.minimo || 0)) cambios.minimo = mi
+      const bu = bulto.value.trim() ? Math.round(Number(bulto.value.replace(',', '.'))) : 1
+      if (!Number.isFinite(bu) || bu < 1 || bu > 1000) return toast('Las unidades por caja no son válidas', 'mal')
+      if (bu !== (p.bulto || 1)) cambios.unidadesPorBulto = bu
       if ((prov.value || null) !== (p.proveedorId || null)) cambios.proveedorId = prov.value || null
       if ((rub.value || null) !== (p.rubroId || null)) cambios.rubroId = rub.value || null
       const act = activo.value === '1'
       if (act !== (p.activo !== false)) cambios.activo = act
       if (!Object.keys(cambios).length) return cerrarHoja()
       cerrarHoja()
-      marcarPendiente(suc, p.id, Object.assign({}, cambios, cambios.descripcion ? { descripcion: cambios.descripcion } : {}))
+      marcarPendiente(suc, p.id, Object.assign({}, cambios, cambios.descripcion ? { descripcion: cambios.descripcion } : {}, cambios.unidadesPorBulto ? { bulto: cambios.unidadesPorBulto } : {}))
       await mandarOrden(suc, 'producto', { productoId: p.id, cambios }, { texto: 'Cambios en ' + p.descripcion, alTerminar: refrescarSeccion })
       refrescarSeccion()
     } }]
@@ -565,14 +665,27 @@ function hojaAumento (sucursalId, proveedores, rubros, lista, productoIds) {
   const hijos = {}
   for (const r of rubros) if (r.padreId) (hijos[r.padreId] = hijos[r.padreId] || []).push(r.id)
   const rama = (id) => { const s = new Set([id]); const pend = [id]; while (pend.length) for (const h of hijos[pend.pop()] || []) if (!s.has(h)) { s.add(h); pend.push(h) } return s }
-  const contar = () => {
-    if (productoIds) { cuantos.textContent = productoIds.length + ' productos elegidos van a cambiar de precio.'; return }
+  // Lo mismo que calcula la caja (precios.js): asi se ve antes de aplicar.
+  const PASOS = { ninguno: 0, decena: 1000, cincuenta: 5000, cien: 10000 }
+  const alcanzados = () => {
+    if (productoIds) { const ids = new Set(productoIds); return lista.filter((p) => ids.has(p.id) && p.activo !== false && p.precio > 0) }
     const r = rub.value ? rama(rub.value) : null
-    const n = lista.filter((p) => p.activo !== false && (!prov.value || p.proveedorId === prov.value) && (!r || r.has(p.rubroId))).length
-    cuantos.textContent = n + ' productos van a cambiar de precio.'
+    return lista.filter((p) => p.activo !== false && p.precio > 0 && (!prov.value || p.proveedorId === prov.value) && (!r || r.has(p.rubroId)))
+  }
+  const nuevoPrecio = (antes, basis) => { const bruto = antes + Math.round(antes * basis / 10000); const paso = PASOS[redondeo] || 0; return Math.max(0, paso ? Math.round(bruto / paso) * paso : bruto) }
+  const ejemplos = el('div', { clase: 'lista' })
+  const contar = () => {
+    const prods = alcanzados()
+    cuantos.textContent = prods.length + (prods.length === 1 ? ' producto va a cambiar de precio.' : ' productos van a cambiar de precio.')
+    const n = Number(String(porcentaje.value).replace(',', '.'))
+    poner(ejemplos, Number.isFinite(n) && n ? prods.slice().sort((a, b) => b.vendido30 - a.vendido30).slice(0, 5).map((p) => el('div', { clase: 'item' },
+      el('div', { clase: 'cuerpo' }, el('b', {}, p.descripcion)),
+      el('div', { clase: 'fin' }, el('span', { clase: 'sub' }, plata(p.precio) + ' → '), el('b', { clase: 'num' }, plata(nuevoPrecio(p.precio, Math.round(n * 100))))))) : null)
   }
   prov.addEventListener('change', contar)
   rub.addEventListener('change', contar)
+  porcentaje.addEventListener('input', contar)
+  seg.addEventListener('click', () => setTimeout(contar, 0))
   contar()
   abrirHoja({
     titulo: productoIds ? 'Cambiar precio de los elegidos' : 'Aumentar precios en ' + nombreSucursal(sucursalId),
@@ -582,10 +695,16 @@ function hojaAumento (sucursalId, proveedores, rubros, lista, productoIds) {
       productoIds ? null : el('label', { clase: 'campo' }, 'De qué familia', rub),
       el('div', { clase: 'campo' }, 'Redondeo', seg),
       cuantos,
-      el('p', { clase: 'sub' }, 'Queda anotado en la caja y se puede volver atrás desde Productos → Historial de aumentos.')),
+      ejemplos,
+      el('p', { clase: 'sub' }, 'Queda anotado en la caja y se puede volver atrás desde Productos → "Ordenar, familia, proveedor y aumentos" → Últimos aumentos.')),
     botones: [{ texto: 'Aplicar', primario: true, alTocar: async () => {
       const n = Number(String(porcentaje.value).replace(',', '.'))
       if (!Number.isFinite(n) || n === 0 || n < -50 || n > 200) return toast('Poné un porcentaje (por ejemplo 8)', 'mal')
+      const cant = alcanzados().length
+      if (!cant) return toast('No hay productos con precio para cambiar con ese filtro', 'mal')
+      // Un 80 en vez de un 8, o todo el catalogo: se pregunta antes.
+      const todo = !productoIds && !prov.value && !rub.value
+      if ((Math.abs(n) > 30 || todo) && !confirm((n > 0 ? 'Subir ' : 'Bajar ') + Math.abs(n) + '% el precio de ' + cant + ' productos' + (todo ? ' (TODOS los del local)' : '') + '.\n\n¿Seguro?')) return
       cerrarHoja()
       await mandarOrden(sucursalId, 'aumento', {
         porcentajeBasis: Math.round(n * 100), redondeo, proveedorId: productoIds ? undefined : prov.value || undefined, rubroId: productoIds ? undefined : rub.value || undefined, productoIds: productoIds || undefined,
@@ -603,39 +722,86 @@ function hojaAsignarProveedor (ids, proveedores) {
     cuerpo: el('div', {}, el('p', { clase: 'tenue' }, ids.length + ' productos elegidos.'), el('label', { clase: 'campo' }, 'Proveedor', prov)),
     botones: [{ texto: 'Asignar', primario: true, alTocar: async () => {
       if (!prov.value) return toast('Elegí el proveedor', 'mal')
-      if (ids.length > 150) return toast('Elegí hasta 150 productos por vez', 'mal')
       cerrarHoja()
-      for (const id of ids) {
-        marcarPendiente(S.sucursal, id, { proveedorId: prov.value, proveedor: prov.selectedOptions[0].textContent })
-        await mandarOrden(S.sucursal, 'producto', { productoId: id, cambios: { proveedorId: prov.value } }, { callado: true, texto: 'Proveedor' })
-      }
-      toast(ids.length + ' productos enviados a la caja', 'ok')
+      for (const id of ids) marcarPendiente(S.sucursal, id, { proveedorId: prov.value, proveedor: prov.selectedOptions[0].textContent })
+      // Todos en una sola orden (antes era una por producto y trababa la caja).
+      await mandarOrden(S.sucursal, 'productos_proveedor', { productoIds: ids, proveedorId: prov.value }, { texto: 'Proveedor de ' + ids.length + ' productos' })
       if (S.prod) S.prod.sel = null
       refrescarSeccion()
     } }]
   })
 }
 
-// --- ARREGLO DE STOCK ---------------------------------------------------------------
+// --- STOCK --------------------------------------------------------------------------
 
 async function secStock () {
-  if (!S.sucursal) return pintarSeccion('stock', cabecera('Arreglo de stock'), el('div', { clase: 'tarjeta' }, vacio('Todavía no hay sucursales conectadas.', 'stock')))
+  if (!S.sucursal) return pintarSeccion('stock', cabecera('Stock'), el('div', { clase: 'tarjeta' }, vacio('Todavía no hay sucursales conectadas.', 'stock')))
   const [lista, aud] = await Promise.all([leerCatalogo(S.sucursal), leerDatos('auditoria').catch(() => ({}))])
-  const busca = el('input', { type: 'search', placeholder: 'Buscar el producto a corregir…', enterkeyhint: 'search' })
+  const productos = lista.filter((p) => p.activo !== false || p.stock < 0)
+  const negativos = productos.filter((p) => p.stock < 0)
+  const enCero = productos.filter((p) => p.stock === 0).length
+  const positivos = productos.filter((p) => p.stock > 0).length
+  const esDuenio = !esEncargado() && !esEmpleado()
+  const valorDe = (p) => Math.round(p.stock * (p.costo || 0) / 1000)
+  const valorExistencias = productos.reduce((total, p) => total + (p.stock > 0 ? valorDe(p) : 0), 0)
+  const valorNegativos = negativos.reduce((total, p) => total + valorDe(p), 0)
+  const sinCosto = productos.filter((p) => p.stock > 0 && !p.costo).length
+  const V = S.stockVista || (S.stockVista = { filtro: 'todos', busca: '' })
+  const busca = el('input', { type: 'search', placeholder: 'Buscar producto o código…', valor: V.busca, enterkeyhint: 'search' })
   const zona = el('div', { clase: 'lista' })
-  const pintar = () => {
-    const q = busca.value.trim()
-    const filas = q ? lista.filter((p) => p.activo !== false && coincide(p.descripcion + ' ' + (p.codigos || []).join(' '), q)).slice(0, 30)
-      : lista.filter((p) => p.activo !== false && p.stock < 0).sort((a, b) => a.stock - b.stock).slice(0, 30)
-    poner(zona, filas.length ? filas.map((p) => itemProducto(p, () => hojaAjusteStock(p))) : vacio(q ? 'Nada coincide.' : 'No hay productos en negativo.', 'stock'))
-    titulo.textContent = q ? 'Resultados' : 'En negativo (para revisar)'
-  }
   const titulo = el('h3', {}, '')
-  busca.addEventListener('input', pintar)
+  const filtros = el('div', { clase: 'filtros' })
+  let limite = 80
+  const opciones = [
+    ['todos', 'Todos', productos.length],
+    ['negativo', 'En negativo', negativos.length],
+    ['cero', 'En cero', enCero],
+    ['con', 'Con stock', positivos]
+  ]
+  const pintarFiltros = () => poner(filtros, opciones.map(([id, nombre, cantidad]) => el('button', {
+    clase: 'filtro' + (V.filtro === id ? ' activo' : ''),
+    onclick: () => { V.filtro = id; limite = 80; pintarFiltros(); pintar() }
+  }, nombre, el('span', { clase: 'n' }, String(cantidad)))))
+  const pintar = () => {
+    const q = V.busca.trim()
+    const filas = productos.filter((p) =>
+      (V.filtro === 'todos' || (V.filtro === 'negativo' && p.stock < 0) || (V.filtro === 'cero' && p.stock === 0) || (V.filtro === 'con' && p.stock > 0)) &&
+      (!q || coincide(p.descripcion + ' ' + (p.codigos || []).join(' '), q)))
+      .sort((a, b) => a.stock - b.stock || a.descripcion.localeCompare(b.descripcion, 'es'))
+    titulo.textContent = filas.length + (filas.length === 1 ? ' producto' : ' productos') + (V.filtro === 'negativo' ? ' en negativo' : '')
+    poner(zona,
+      filas.length ? filas.slice(0, limite).map((p) => el('div', { clase: 'item tocable' + (p.activo === false ? ' inactivo' : ''), onclick: () => hojaAjusteStock(p) },
+        el('div', { clase: 'cuerpo' }, el('b', {}, p.descripcion),
+          el('div', { clase: 'sub' }, ((p.codigos || [])[0] || 'sin código') + (p.activo === false ? ' · dado de baja' : ''))),
+        el('div', { clase: 'fin' }, el('b', { clase: 'num ' + colorStock(p) }, unidades(p.stock)),
+          el('div', { clase: 'sub' }, esDuenio && p.stock > 0 ? plata(valorDe(p)) + ' al costo' : 'en stock'))))
+        : vacio(q ? 'No hay productos con esa búsqueda.' : 'No hay productos en esta categoría.', 'stock'),
+      filas.length > limite ? el('button', { clase: 'btn ancho', onclick: () => { limite += 100; pintar() } }, 'Ver más (' + (filas.length - limite) + ')') : null)
+  }
+  busca.addEventListener('input', () => { V.busca = busca.value; limite = 80; pintar() })
+  pintarFiltros()
   pintar()
   const ajustes = (datosDe(aud) || []).filter((x) => x.tipo === 'stock').slice(0, 30)
+  const ponerNegativosACero = async () => {
+    const actual = await leerCatalogo(S.sucursal, true)
+    const cantidad = actual.filter((p) => p.stock < 0).length
+    if (!cantidad) return toast('Ya no hay productos en negativo.', 'ok')
+    if (!confirm('¿Poner en cero los ' + cantidad + ' productos con stock negativo de ' + nombreSucursal(S.sucursal) + '?\n\nLa caja revisa el stock actual cuando recibe la orden. Los productos con stock positivo no se tocan. Cada corrección queda en el historial.')) return
+    await mandarOrden(S.sucursal, 'stock_negativos_cero', {}, { texto: 'Negativos puestos en cero', alTerminar: refrescarSeccion })
+  }
   pintarSeccion('stock',
-    cabecera('Arreglo de stock', nombreSucursal(S.sucursal) + ' · sumar, restar o dejar el número exacto, con motivo'),
+    cabecera('Stock', nombreSucursal(S.sucursal) + ' · existencias y correcciones', esDuenio ? el('button', { clase: 'btn primario', onclick: () => ir('perdidas') }, 'Registrar pérdida') : null),
+    esDuenio ? el('div', { clase: 'kpis' },
+      kpi('Mercadería en stock', plata(valorExistencias), 'al costo · sólo cantidades positivas', { clase: 'principal' }),
+      negativos.length ? kpi('Saldo del sistema', plata(valorExistencias + valorNegativos), 'incluye los ' + negativos.length + ' productos negativos') : null) : null,
+    esDuenio && sinCosto ? el('div', { clase: 'aviso alerta' },
+      sinCosto + (sinCosto === 1 ? ' producto con stock no tiene costo cargado.' : ' productos con stock no tienen costo cargado.') + ' Su valor figura como $ 0 hasta que cargues el costo.') : null,
+    el('div', { clase: 'tarjeta' },
+      el('div', { clase: 'fila' }, el('b', {}, positivos + ' con stock'), el('b', {}, enCero + ' en cero'), el('b', { clase: negativos.length ? 'rojo' : '' }, negativos.length + ' en negativo')),
+      el('p', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, 'Tocá un producto para corregir su cantidad. Los negativos aparecen primero en la lista.'),
+      el('button', { clase: 'btn peligro ancho', disabled: !negativos.length || !esDuenio, onclick: ponerNegativosACero },
+        'Poner todos los negativos en cero' + (negativos.length ? ' (' + negativos.length + ')' : '')),
+      !esDuenio && negativos.length ? el('p', { clase: 'sub' }, 'La puesta en cero de todos los negativos la hace el dueño.') : null),
     el('button', { clase: 'btn primario ancho grande', estilo: { marginBottom: '10px' }, onclick: async () => {
       const c = await leerCodigo({ titulo: 'Producto a corregir' })
       if (!c) return
@@ -644,6 +810,7 @@ async function secStock () {
       else hojaNoEncontrado(c, r.enOtra)
     } }, icono('escanear'), 'Escanear producto'),
     el('div', { clase: 'buscador' }, icono('buscar'), busca),
+    filtros,
     titulo,
     el('div', { clase: 'tarjeta sin-relleno' }, zona),
     el('h3', {}, 'Últimos ajustes'),
@@ -755,12 +922,15 @@ async function secPasar () {
         el('div', { clase: 'cuerpo' },
           el('b', {}, (t.tipo === 'enviada' ? 'A ' : 'De ') + t.otra),
           el('div', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, t.items.slice(0, 4).map((it) => unidades(it.cantidad) + ' ' + it.descripcion).join(' · ') + (t.items.length > 4 ? ' y ' + (t.items.length - 4) + ' más' : '')),
-          el('div', { clase: 'sub' }, fechaHora(t.fecha) + (t.nota ? ' · ' + t.nota : ''))),
+          el('div', { clase: 'sub' }, fechaHora(t.fecha) + (t.nota ? ' · ' + t.nota : '')),
+          // Por que no entro (antes quedaba escondido) y que paso con la mercaderia.
+          t.estado === 'error' ? el('div', { clase: 'sub rojo', estilo: { whiteSpace: 'normal' } }, 'No entró: ' + (t.error || 'la otra caja no lo pudo cargar') + (t.devuelta ? '. La mercadería volvió al stock de acá.' : '. Revisá el stock: no volvió solo.')) : null,
+          (t.noEntraron || []).length ? el('div', { clase: 'sub ambar', estilo: { whiteSpace: 'normal' } }, 'Volvieron al stock de acá (allá no se pudieron cargar): ' + t.noEntraron.slice(0, 6).join(', ')) : null),
         el('span', { clase: 'chip ' + (t.tipo === 'recibida' || t.estado === 'recibida' ? 'ok' : t.estado === 'error' ? 'mal' : 'alerta'), title: t.error || '' }, t.tipo === 'recibida' ? 'Entró' : t.estado === 'recibida' ? 'Llegó' : t.estado === 'error' ? 'No entró' : 'En camino'))))
       : vacio('Todavía no hay envíos.', 'historial')))
 }
 
 
 seccion('productos', { nombre: 'Productos', icono: 'productos', grupo: 'principal', fn: secProductos })
-seccion('stock', { nombre: 'Arreglo de stock', icono: 'stock', grupo: 'mercaderia', fn: secStock })
+seccion('stock', { nombre: 'Stock', icono: 'stock', grupo: 'mercaderia', fn: secStock })
 seccion('pasar', { nombre: 'Pasar a otra sucursal', icono: 'pasar', grupo: 'mercaderia', fn: secPasar })
