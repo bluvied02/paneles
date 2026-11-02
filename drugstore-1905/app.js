@@ -45,7 +45,7 @@ const S = {
 // La version de la app. Al abrirla (o al volver a ella) se fija si hay una
 // nueva publicada y, si la hay, se recarga sola: en el iPhone la app queda
 // abierta en memoria y si no, seguiria la vieja por dias.
-const VERSION_APP = '12.7'
+const VERSION_APP = '13.29'
 const $app = document.getElementById('app')
 const $tooltip = document.getElementById('tooltip')
 
@@ -128,6 +128,7 @@ const ICONOS = {
   proveedores: 'M2 6h12v10H2z M14 10h4l3 3v3h-7 M6 19.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z M17 19.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
   apagar: 'M4 5h16v16H4z M4 10h16 M9 3v4 M15 3v4 M8 14h3',
   stock: 'M4 7h10 M18 7h2 M4 17h4 M12 17h8 M16 5v4 M10 15v4',
+  perdidas: 'M4 7h16 M7 7l1 14h8l1-14 M9 7V4h6v3 M10 11v6 M14 11v6',
   reponer: 'M9 3h6v3H9z M7 4.5H5V21h14V4.5h-2 M9 12h6 M9 16h4',
   faltantes: 'M12 3 2 20h20z M12 10v4 M12 17h.01',
   promos: 'M3 12V4h8l10 10-8 8z M7.5 7.5h.01',
@@ -155,7 +156,8 @@ const ICONOS = {
   contar: 'M9 4h6v3H9z M7 5.5H5V21h14V5.5h-2 M8.5 12.5l2 2 4-4 M8.5 17.5h7',
   recibir: 'M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10 M8 13.5l4 2 4-2',
   pedidos: 'M6 3h12v18H6z M9 7h6 M9 11h6 M9 15h3 M15 15l1.5 1.5L19 13',
-  foto: 'M4 7h3l2-3h6l2 3h3v12H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'
+  foto: 'M4 7h3l2-3h6l2 3h3v12H4z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  reloj: 'M7 3h10 M7 21h10 M8 3c0 5 8 5 8 9s-8 4-8 9 M16 3c0 5-8 5-8 9s8 4 8 9'
 }
 function icono (nombre, clase) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
@@ -168,10 +170,11 @@ function icono (nombre, clase) {
   return svg
 }
 
-function toast (texto, tipo, segundos) {
-  if (typeof tipo === 'number') { segundos = tipo; tipo = '' }
+// alTocar: el cartel se puede tocar (por ejemplo, para ver lo que no se pudo).
+function toast (texto, tipo, segundos, alTocar) {
+  if (typeof tipo === 'number') { alTocar = segundos; segundos = tipo; tipo = '' }
   for (const t of document.querySelectorAll('.aviso-toast')) t.remove()
-  const t = el('div', { clase: 'aviso-toast ' + (tipo || ''), role: 'status' }, texto)
+  const t = el('div', { clase: 'aviso-toast ' + (tipo || ''), role: 'status', onclick: alTocar ? () => { t.remove(); alTocar() } : null, estilo: alTocar ? { cursor: 'pointer' } : null }, texto)
   document.body.append(t)
   setTimeout(() => t.remove(), (segundos || 3.5) * 1000)
 }
@@ -290,8 +293,20 @@ function red (ok, viejo) {
   }
 }
 
-// Lee una clave de pos_datos de todas las sucursales: { sucursalId: fila }.
+// Lo que el encargado y el empleado leen en su version sin plata (sin costos,
+// sin lo que se le debe a cada proveedor). Si la caja todavia no la sube, la
+// de siempre (la nube decide si la puede ver).
+const DE_EQUIPO = ['proveedores', 'auditoria', 'vencimientos']
 async function leerDatos (clave, forzar) {
+  if (S.rol && S.rol !== 'duenio' && DE_EQUIPO.includes(clave)) {
+    const v = await leerDatosClave(clave + '_equipo', forzar)
+    return Object.keys(v).length ? v : leerDatosClave(clave, forzar).catch(() => v)
+  }
+  return leerDatosClave(clave, forzar)
+}
+
+// Lee una clave de pos_datos de todas las sucursales: { sucursalId: fila }.
+async function leerDatosClave (clave, forzar) {
   const k = 'd:' + clave
   const c = S.cache[k]
   if (!forzar && c && Date.now() - c.t < 45000) return c.v
@@ -393,23 +408,51 @@ async function buscarCodigo (codigo, sucursalId) {
 
 const NOMBRE_ORDEN = {
   reporte: 'Reporte',
+  cierre_semana_previsualizar: 'Calcular cierre semanal', cierre_semana_mercadopago: 'Mercado Pago', cierre_mes_previsualizar: 'Calcular cierre mensual',
   ventas_dia: 'Ventas de un día',
-  producto: 'Cambio de producto', stock: 'Ajuste de stock', aumento: 'Aumento de precios', producto_nuevo: 'Producto nuevo',
-  promo_estado: 'Promo', promo_borrar: 'Borrar promo', promo_guardar: 'Promo nueva', anular_venta: 'Anular venta', anulacion_rechazar: 'No anular',
-  cliente_guardar: 'Cliente', cliente_pago: 'Pago de cliente', cliente_deuda: 'Deuda de cliente', gasto: 'Gasto',
+  producto: 'Cambio de producto', stock: 'Ajuste de stock', stock_negativos_cero: 'Negativos puestos en cero', perdida_registrar: 'Pérdida registrada', perdida_anular: 'Pérdida anulada', aumento: 'Aumento de precios', producto_nuevo: 'Producto nuevo',
+  promo_estado: 'Promo', promo_borrar: 'Borrar promo', promo_guardar: 'Promo nueva', anular_venta: 'Anular venta', devolver_mp: 'Devolver por Mercado Pago', anulacion_rechazar: 'No anular',
+  cliente_guardar: 'Cliente', cliente_pago: 'Pago de cliente', cliente_deuda: 'Deuda de cliente', gasto: 'Gasto', gasto_anular: 'Gasto borrado',
   proveedor_guardar: 'Proveedor', deuda_guardar: 'Deuda con proveedor', deuda_pagar: 'Pago a proveedor',
   transferencia_salida: 'Pasar a otra sucursal', conteo: 'Conteo de stock', recepcion: 'Mercadería recibida',
   producto_foto: 'Foto del producto', venta_celular: 'Venta', modo_emergencia: 'Modo emergencia', encargo_guardar: 'Encargo', encargo_estado: 'Encargo',
-  mayorista_guardar: 'Presupuesto mayorista', mayorista_estado: 'Presupuesto mayorista', mayorista_venta: 'Venta mayorista'
+  mayorista_guardar: 'Presupuesto mayorista', mayorista_estado: 'Presupuesto mayorista', mayorista_venta: 'Venta mayorista',
+  pedido_guardar: 'Pedido a proveedor', pedido_estado: 'Pedido a proveedor', pedido_recalcular: 'Recalcular pedido', pedido_ajustar: 'Ajustar pedido mandado',
+  horario_guardar: 'Horario', valor_hora: 'Valor hora', fichaje_corregir: 'Turno corregido', fichaje_manual: 'Día a mano', fichaje_config: 'Fichaje',
+  sueldo_registrar: 'Sueldo', sueldo_anular: 'Anular movimiento', sueldo_perdonar: 'Faltante',
+  vencimiento_guardar: 'Vencimiento', vencimiento_resolver: 'Vencimiento', vencimiento_borrar: 'Vencimiento',
+  envases_config: 'Envases', medios_config: 'Medios de pago', rubros_margen: 'Ganancia por rubro'
 }
 
+// Lo que se manda a la caja pasa por cuatro listas, todas guardadas en el
+// celular: la cola (sin mandar todavia), las fallidas (la nube no la acepto:
+// se reintenta o se borra a mano), las que esperan a la caja y las hechas
+// (lo que la caja aplico o rechazo, los ultimos 7 dias: "Lo que mandé").
+const DIAS_HECHAS = 7
 async function cargarCola () {
   S.cola = (await DB.get('cola')) || []
+  S.fallidas = (await DB.get('fallidas')) || []
+  S.hechas = ((await DB.get('hechas')) || []).filter((o) => Date.now() - new Date(o.terminada || o.creado).getTime() < DIAS_HECHAS * 86400000)
   const esp = (await DB.get('esperando')) || []
-  for (const o of esp) if (Date.now() - new Date(o.creado).getTime() < 24 * 3600000) S.esperando.set(o.id, o)
+  // Una caja apagada varios dias igual contesta cuando vuelve: se la sigue esperando.
+  for (const o of esp) if (Date.now() - new Date(o.creado).getTime() < DIAS_HECHAS * 86400000) S.esperando.set(o.id, o)
 }
 const guardarCola = () => DB.set('cola', S.cola)
+const guardarFallidas = () => DB.set('fallidas', S.fallidas)
 const guardarEsperando = () => DB.set('esperando', [...S.esperando.values()])
+function anotarHecha (o, r) {
+  const res = r.resultado || {}
+  S.hechas = [Object.assign({}, o, { estado: r.estado, mensaje: res.mensaje || '', error: res.error || '', terminada: new Date().toISOString() })]
+    .concat((S.hechas || []).filter((x) => x.id !== o.id)).slice(0, 150)
+  DB.set('hechas', S.hechas)
+}
+// Si esa caja no se conecta hace rato, lo que se manda queda esperando: se dice.
+function atrasoCaja (sucursalId) {
+  const filas = (S.cache.resumen && S.cache.resumen.v) || []
+  const f = filas.find((x) => x.sucursal_id === sucursalId)
+  const atraso = f && f.actualizado ? Date.now() - new Date(f.actualizado).getTime() : 0
+  return atraso > 10 * 60000 ? f.actualizado : null
+}
 
 // Deja una orden. Primero queda guardada en el celular; si hay internet se
 // manda ya, si no, cuando vuelva. alTerminar(resultado) cuando la caja responde.
@@ -421,7 +464,10 @@ async function mandarOrden (sucursalId, tipo, datos, opciones = {}) {
   pintarConexion()
   const ok = await vaciarCola()
   if (!opciones.callado) {
-    toast(ok ? 'Enviado a ' + nombreSucursal(sucursalId) + '. La caja lo aplica en menos de un minuto.' : 'Sin conexión: quedó guardado y se manda solo cuando vuelva internet.', ok ? '' : 'mal', 4)
+    const atrasada = ok && atrasoCaja(sucursalId)
+    toast(!ok ? 'Sin conexión: quedó guardado y se manda solo cuando vuelva internet.'
+      : atrasada ? 'Enviado, pero la caja de ' + nombreSucursal(sucursalId) + ' no se conecta ' + hace(atrasada) + ': queda esperando y entra cuando se conecte.'
+        : 'Enviado a ' + nombreSucursal(sucursalId) + '. La caja lo aplica en menos de un minuto.', ok && !atrasada ? '' : 'mal', 5)
   }
   return o.id
 }
@@ -432,13 +478,23 @@ async function vaciarCola () {
   try {
     while (S.cola.length) {
       const o = S.cola[0]
-      const { error } = await S.sb.from('pos_ordenes').insert({ id: o.id, sucursal_id: o.sucursal_id, tipo: o.tipo, datos: o.datos })
+      const insertar = () => S.sb.from('pos_ordenes').insert({ id: o.id, sucursal_id: o.sucursal_id, tipo: o.tipo, datos: o.datos })
+      let { error } = await insertar()
+      // La sesion vencio mientras no habia internet: se renueva y se prueba una vez mas.
+      if (error && /jwt|token|expired|401/i.test(String(error.message) + ' ' + String(error.code))) {
+        try { await S.sb.auth.refreshSession() } catch (e) { /* abajo queda como fallida */ }
+        ;({ error } = await insertar())
+      }
       if (error && !/duplicate|23505/i.test(String(error.message) + ' ' + String(error.code))) {
         if (esDeRed(error)) { red(false); return false }
-        // Un error de la nube (no de la conexion): no se reintenta para siempre.
+        // Un error de la nube (no de la conexion): no se reintenta solo para
+        // siempre, pero tampoco se tira: queda en "Lo que mandé" para
+        // reintentarlo o borrarlo a mano (puede ser una venta).
         S.cola.shift()
         await guardarCola()
-        toast('No se pudo mandar "' + o.texto + '": ' + error.message, 'mal', 7)
+        S.fallidas = [Object.assign({}, o, { error: error.message, fallo: new Date().toISOString() })].concat(S.fallidas || []).slice(0, 100)
+        await guardarFallidas()
+        toast('No se pudo mandar "' + o.texto + '": ' + error.message + '. Quedó en "Lo que mandé" para reintentar.', 'mal', 8, () => ir('mandado'))
         continue
       }
       S.cola.shift()
@@ -468,23 +524,35 @@ function seguirOrdenes () {
     try {
       const { data, error } = await S.sb.from('pos_ordenes').select('id,estado,resultado').in('id', ids)
       if (error) throw error
+      // Las respuestas que llegan juntas van en un solo cartel: si no, cada
+      // una tapaba a la anterior y un "no se pudo" quedaba escondido.
+      const bien = []
+      const mal = []
       for (const r of data || []) {
         if (r.estado === 'pendiente') continue
         const o = S.esperando.get(r.id)
         S.esperando.delete(r.id)
         const res = r.resultado || {}
-        if (o && o.silencioso) { /* lo muestra quien la pidio */ } else if (r.estado === 'aplicada') toast('✓ ' + (o ? o.texto : 'Listo') + (res.mensaje ? ': ' + res.mensaje : ''), 'ok', 4.5)
-        else toast('✗ ' + (o ? o.texto : 'La caja') + ' no se pudo: ' + (res.error || 'error'), 'mal', 8)
+        if (o) anotarHecha(o, r)
+        if (o && o.silencioso) { /* lo muestra quien la pidio */ } else if (r.estado === 'aplicada') bien.push((o ? o.texto : 'Listo') + (res.mensaje ? ': ' + res.mensaje : ''))
+        else mal.push((o ? o.texto : 'La caja') + ' no se pudo: ' + (res.error || 'error'))
         // La caja marca la orden y enseguida sube los datos nuevos: se espera
         // unos segundos antes de volver a leer, asi no se ve el valor viejo.
         const fn = S.alTerminar.get(r.id)
         S.alTerminar.delete(r.id)
         if (o && o.silencioso) { if (fn) { try { fn(r) } catch (e) {} } } else setTimeout(() => { S.cache = {}; if (fn) { try { fn(r) } catch (e) {} } }, 5000)
       }
-      // Lo que ya no existe en la nube (o es muy viejo) se deja de seguir.
+      if (mal.length === 1 && !bien.length) toast('✗ ' + mal[0], 'mal', 9, () => ir('mandado'))
+      else if (mal.length) toast('✗ ' + mal.length + (mal.length === 1 ? ' cosa no se pudo' : ' cosas no se pudieron') + (bien.length ? ' y ' + bien.length + (bien.length === 1 ? ' salió bien' : ' salieron bien') : '') + '. Tocá para ver por qué.', 'mal', 10, () => ir('mandado'))
+      else if (bien.length === 1) toast('✓ ' + bien[0], 'ok', 4.5)
+      else if (bien.length) toast('✓ ' + bien.length + ' cosas aplicadas en la caja.', 'ok', 4.5, () => ir('mandado'))
+      // Lo que ya no existe en la nube (se borra a los 30 dias) se deja de seguir.
       for (const id of ids) {
         const o = S.esperando.get(id)
-        if (o && !(data || []).some((x) => x.id === id) && Date.now() - new Date(o.creado).getTime() > 3600000) S.esperando.delete(id)
+        if (o && !(data || []).some((x) => x.id === id) && Date.now() - new Date(o.creado).getTime() > 3600000) {
+          S.esperando.delete(id)
+          anotarHecha(o, { estado: 'perdida', resultado: { error: 'La nube ya no la tiene: fijate en la caja si entró' } })
+        }
       }
       await guardarEsperando()
       red(true)
@@ -576,6 +644,8 @@ function pantallaEntrar (mensaje) {
     boton.textContent = 'Entrar'
     if (err) { error.textContent = /invalid/i.test(err.message) ? 'Email o contraseña incorrectos.' : esDeRed(err) ? 'Sin conexión. Revisá internet y probá de nuevo.' : err.message; return }
     guardarLocal('bs.email', email.value.trim())
+    // Recien puso la contraseña: no se le pide ademas el PIN de la app.
+    S.recienEntro = true
     entrarAlPanel(data.session)
   }
   boton.addEventListener('click', entrar)
@@ -669,7 +739,8 @@ async function entrarAlPanel (sesion) {
   try {
     const { data: admin, error } = await S.sb.from('pos_admins').select('email').limit(1)
     if (error) throw error
-    if (!admin || !admin.length) return pantallaMensaje('Sin permiso', 'El usuario ' + S.email + ' no está autorizado. Pedile al dueño que lo agregue.')
+    // Sin permiso, o la sesion se cerro desde la caja (celular perdido): se sale del todo.
+    if (!admin || !admin.length) { await salirDelTodo(); return pantallaEntrar('Tu sesión se cerró o tu usuario no tiene permiso. Si te pasa siempre, pedile al dueño que te agregue.') }
     guardarLocal('bs.admin', S.email)
   } catch (err) {
     if (!esDeRed(err) || leerLocal('bs.admin', '') !== S.email) return pantallaMensaje('Sin conexión', 'No se pudo revisar tu usuario. Probá de nuevo con internet.', true)
@@ -686,12 +757,94 @@ async function entrarAlPanel (sesion) {
   pintarArmazon()
   const m = /^#\/(\w+)/.exec(location.hash)
   ir(m && SECCIONES[m[1]] ? m[1] : 'inicio', {}, true)
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { buscarVersionNueva(); vaciarCola(); if (S.seccion === 'inicio' && !S.hojas.length) render() } })
+  pedirBloqueo(true)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { S.ocultaDesde = Date.now(); return }
+    pedirBloqueo(false)
+    buscarVersionNueva(); vaciarCola(); revisarPermiso()
+    if (S.seccion === 'inicio' && !S.hojas.length) render()
+  })
   window.addEventListener('online', () => vaciarCola())
   window.addEventListener('offline', () => red(false))
   setInterval(() => { if (S.cola.length) vaciarCola() }, 30000)
   vaciarCola()
   contarAvisos()
+}
+
+// --- salir, permiso y el PIN para abrir la app ---------------------------------------
+
+// Salir de verdad: las notificaciones de este celular se apagan (si no, le
+// seguian llegando los avisos con plata) y no queda nada de esta cuenta: ni
+// lo que estaba sin mandar, ni las listas a medio hacer, ni lo guardado para
+// cuando no hay internet (si despues entra otro, no se mezcla).
+async function salirDelTodo () {
+  try {
+    const reg = 'serviceWorker' in navigator ? await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 2000))]) : null
+    const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null
+    if (sub) {
+      try { await S.sb.from('pos_suscripciones').delete().eq('endpoint', sub.endpoint) } catch (e) { /* sin internet: la caja la borra cuando falle */ }
+      await sub.unsubscribe()
+    }
+  } catch (e) { /* sigue igual */ }
+  try { await S.sb.auth.signOut() } catch (e) { /* sin internet */ }
+  S.cola = []; S.fallidas = []; S.hechas = []; S.esperando = new Map(); S.cache = {}; S.listas = {}; S.pasar = null
+  try {
+    const db = await DB.abrir()
+    if (db) await new Promise((ok) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').clear(); t.oncomplete = ok; t.onerror = ok })
+  } catch (e) { /* nada */ }
+  for (const k of Object.keys(localStorage)) {
+    const sinEspacio = ESPACIO && k.startsWith(ESPACIO + '|') ? k.slice(ESPACIO.length + 1) : (ESPACIO ? null : k)
+    if (sinEspacio && /^bs\.(contar|recibir|vender|pasar)\.|^bs\.(admin|rol|empleado|bloqueo|avisosVistos)$/.test(sinEspacio)) { try { localStorage.removeItem(k) } catch (e) {} }
+  }
+}
+
+// Cada vez que se vuelve a la app (como mucho cada 5 minutos) se mira si la
+// cuenta sigue autorizada: si la sesion se cerro desde la caja, se sale.
+async function revisarPermiso () {
+  if (!S.sb || !navigator.onLine || Date.now() - (S.permisoRevisado || 0) < 5 * 60000) return
+  S.permisoRevisado = Date.now()
+  try {
+    const { data, error } = await S.sb.from('pos_admins').select('email').limit(1)
+    if (error || !data) return
+    if (!data.length) { await salirDelTodo(); pantallaEntrar('Tu sesión se cerró desde la caja (o te sacaron el permiso). Entrá de nuevo.') }
+  } catch (e) { /* sin internet: la proxima */ }
+}
+
+// El PIN para abrir la app (opcional, en Ajustes): lo pide al abrirla y al
+// volver despues de unos minutos. Se guarda solo una huella del PIN, nunca el PIN.
+async function huellaPin (pin, sal) {
+  const datos = new TextEncoder().encode(sal + '|' + pin)
+  const h = await crypto.subtle.digest('SHA-256', datos)
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+function pedirBloqueo (alAbrir) {
+  const b = leerLocal('bs.bloqueo', null)
+  if (!b || !b.huella || document.querySelector('.bloqueo')) return
+  if (alAbrir && S.recienEntro) return
+  const minutos = Number(b.minutos) || 5
+  if (!alAbrir && (!S.ocultaDesde || Date.now() - S.ocultaDesde < minutos * 60000)) return
+  const pin = el('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: '8', placeholder: 'Tu PIN' })
+  const error = el('div', { clase: 'error' })
+  let fallos = 0
+  const probar = async () => {
+    if (await huellaPin(pin.value.trim(), b.sal) === b.huella) { tapa.remove(); return }
+    fallos++
+    pin.value = ''
+    if (fallos >= 5) { await salirDelTodo(); tapa.remove(); return pantallaEntrar('Cinco PIN equivocados: entrá de nuevo con tu mail y contraseña.') }
+    error.textContent = 'PIN equivocado (' + (5 - fallos) + (5 - fallos === 1 ? ' intento más' : ' intentos más') + ')'
+    vibrar(120)
+  }
+  pin.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') probar() })
+  const tapa = el('div', { clase: 'bloqueo telon', estilo: { zIndex: '200', alignItems: 'center', justifyContent: 'center', display: 'flex', background: 'var(--fondo)' } },
+    el('div', { clase: 'entrar', estilo: { maxWidth: '360px', width: '100%' } },
+      el('img', { clase: 'logo', src: 'icono-192.png', alt: '' }),
+      el('h1', {}, S.negocio),
+      el('p', {}, 'Escribí tu PIN para abrir la app.'),
+      el('label', { clase: 'campo' }, 'PIN', pin), error,
+      el('button', { clase: 'btn primario ancho grande', onclick: probar }, 'Abrir'),
+      el('button', { clase: 'btn ancho', estilo: { marginTop: '14px' }, onclick: async () => { if (!confirm('Para entrar sin el PIN tenés que poner de nuevo tu mail y contraseña. ¿Salir?')) return; await salirDelTodo(); tapa.remove(); pantallaEntrar() } }, 'Me olvidé el PIN')))
+  document.body.append(tapa)
+  setTimeout(() => pin.focus(), 100)
 }
 
 // --- armazon y navegacion ------------------------------------------------------------
@@ -702,11 +855,12 @@ function seccion (id, def) { SECCIONES[id] = def }
 
 // Dueño o encargado. El encargado ve lo del local; la plata, los costos y los
 // precios son del dueño. (La caja revisa lo mismo antes de aplicar cada orden.)
-const SOLO_DUENIO = ['reportes', 'caja', 'gastos', 'apagar', 'proveedores', 'promos', 'cierres', 'historial', 'ventas', 'mayorista', 'metricas']
+// (Vencimientos y Pérdidas los ve tambien el encargado, sin lo que cuesta.)
+const SOLO_DUENIO = ['cierresemana', 'cierremes', 'envases', 'medios', 'rubrosganancia', 'personal', 'reportes', 'caja', 'gastos', 'apagar', 'proveedores', 'promos', 'cierres', 'historial', 'ventas', 'mayorista', 'metricas']
 const PERMISOS_ENCARGADO = ['verStock', 'ajustarStock', 'contar', 'recibir', 'pasar', 'clientes', 'productoNuevo', 'fotos', 'pedidosClientes', 'vender']
 // El empleado: vender y contar stock, nada mas (y solo con el turno abierto).
 const PERMISOS_EMPLEADO = ['contar', 'vender']
-const SECCIONES_EMPLEADO = ['inicio', 'vender', 'contar', 'ajustes', 'mas']
+const SECCIONES_EMPLEADO = ['inicio', 'vender', 'contar', 'ajustes', 'mas', 'mandado']
 const esEncargado = () => S.rol === 'encargado'
 const esEmpleado = () => S.rol === 'empleado'
 function puede (permiso) {
@@ -716,7 +870,7 @@ function puede (permiso) {
 const seccionPermitida = (id) => esEmpleado() ? SECCIONES_EMPLEADO.includes(id) : (!esEncargado() || !SOLO_DUENIO.includes(id))
 
 const GRUPOS = [['principal', ''], ['negocio', 'Negocio'], ['mercaderia', 'Mercadería'], ['control', 'Control']]
-const ABAJO = ['inicio', 'productos', 'escanear', 'ventas', 'mas']
+const ABAJO = ['inicio', 'vender', 'escanear', 'ventas', 'mas']
 const abajo = () => esEmpleado() ? ['inicio', 'vender', 'escanear', 'contar', 'mas'] : esEncargado() ? ['inicio', 'productos', 'escanear', 'contar', 'mas'] : ABAJO
 
 function pintarArmazon () {
@@ -783,8 +937,10 @@ async function hojaSucursales () {
     cuerpo: el('div', { clase: 'lista' }, S.sucursales.map((x) => {
       const r = resumenes.find((f) => f.sucursal_id === x.id) || {}
       const d = r.datos || {}
+      // El encargado no tiene lo vendido ni la caja: solo cuando se conecto.
+      const sub = S.rol === 'duenio' ? (d.caja && d.caja.abierta ? 'Caja abierta · ' : 'Caja cerrada · ') + 'hoy ' + plata(d.total) + ' · ' + hace(r.actualizado) : 'Se conectó ' + hace(r.actualizado)
       return el('button', { clase: 'item', onclick: () => { cerrarHoja(); cambiarSucursal(x.id) } },
-        el('div', { clase: 'cuerpo' }, el('b', {}, x.nombre), el('div', { clase: 'sub' }, (d.caja && d.caja.abierta ? 'Caja abierta · ' : 'Caja cerrada · ') + 'hoy ' + plata(d.total) + ' · ' + hace(r.actualizado))),
+        el('div', { clase: 'cuerpo' }, el('b', {}, x.nombre), el('div', { clase: 'sub' }, sub)),
         x.id === S.sucursal ? el('span', { clase: 'chip info' }, icono('ok'), 'Esta') : icono('flecha'))
     }))
   })
@@ -795,6 +951,7 @@ async function hojaConexion () {
   const resumenes = await leerResumen().catch(() => [])
   const cola = S.cola.map((o) => el('div', { clase: 'item' }, el('div', { clase: 'cuerpo' }, el('b', {}, o.texto), el('div', { clase: 'sub' }, nombreSucursal(o.sucursal_id) + ' · ' + hace(o.creado))), el('span', { clase: 'chip mal' }, 'Sin enviar')))
   const esperan = [...S.esperando.values()].map((o) => el('div', { clase: 'item' }, el('div', { clase: 'cuerpo' }, el('b', {}, o.texto), el('div', { clase: 'sub' }, nombreSucursal(o.sucursal_id) + ' · ' + hace(o.creado))), el('span', { clase: 'chip alerta' }, 'Esperando la caja')))
+  const fallidas = (S.fallidas || []).length
   abrirHoja({
     titulo: 'Conexión',
     cuerpo: el('div', {},
@@ -806,7 +963,9 @@ async function hojaConexion () {
         return el('div', { clase: 'item' }, el('div', { clase: 'cuerpo' }, el('b', {}, r.nombre), el('div', { clase: 'sub' }, 'Subió datos ' + hace(r.actualizado))),
           el('span', { clase: 'chip ' + (atraso > 10 * 60000 ? 'mal' : atraso > 3 * 60000 ? 'alerta' : 'ok') }, atraso > 10 * 60000 ? 'Sin conexión' : atraso > 3 * 60000 ? 'Atrasada' : 'En línea'))
       }) : vacio('Todavía no se conectó ninguna caja.')),
+      fallidas ? el('div', { clase: 'aviso mal' }, el('b', {}, fallidas + (fallidas === 1 ? ' cosa no se pudo mandar' : ' cosas no se pudieron mandar')), 'Están en "Lo que mandé": reintentalas o borralas.') : null,
       cola.length || esperan.length ? [el('h3', {}, 'Cambios en camino'), el('div', { clase: 'lista' }, cola, esperan)] : null,
+      el('button', { clase: 'btn ancho', estilo: { marginTop: '10px' }, onclick: () => { cerrarHoja(); luegoDeAtras(() => ir('mandado')) } }, icono('historial'), 'Ver lo que mandé y cómo terminó'),
       el('p', { clase: 'sub', estilo: { marginTop: '12px' } }, 'Lo que cambiás acá lo aplica la caja de esa sucursal: tiene que estar prendida, con el programa abierto e internet. Si no, queda esperando y entra cuando vuelve.')),
     botones: [{ texto: 'Reintentar ahora', alTocar: async () => { S.cache = {}; await vaciarCola(); cerrarHoja(); render() } }]
   })
@@ -875,12 +1034,12 @@ function pintarSeccion (id, ...hijos) {
 
 function abrirHoja (opciones) {
   if (S.ignorarPop > 0) { S.trasAtras.push(() => abrirHoja(opciones)); return null }
-  const { titulo, cuerpo, botones, completa, alCerrar, sinCancelar } = opciones
+  const { titulo, cuerpo, botones, completa, alCerrar, sinCancelar, clase } = opciones
   const telon = el('div', { clase: 'telon', onclick: (ev) => { if (ev.target === telon) cerrarHoja() } })
   const pie = (botones || []).length ? el('div', { clase: 'pie-hoja' },
     sinCancelar ? null : el('button', { clase: 'btn', onclick: () => cerrarHoja() }, 'Cancelar'),
     botones.map((b) => el('button', { clase: 'btn' + (b.primario ? ' primario' : '') + (b.peligro ? ' peligro' : ''), onclick: (ev) => b.alTocar(cerrarHoja, ev.currentTarget) }, b.texto))) : null
-  const hoja = el('div', { clase: 'hoja' + (completa ? ' completa' : ''), role: 'dialog', 'aria-label': titulo },
+  const hoja = el('div', { clase: 'hoja' + (completa ? ' completa' : '') + (clase ? ' ' + clase : ''), role: 'dialog', 'aria-label': titulo },
     el('div', { clase: 'agarre' }),
     el('div', { clase: 'cab-hoja' }, el('h2', {}, titulo), el('button', { clase: 'btn-ico', 'aria-label': 'Cerrar', onclick: () => cerrarHoja() }, icono('cerrar'))),
     el('div', { clase: 'cuerpo-hoja' }, cuerpo),
@@ -920,7 +1079,8 @@ function cerrarHoja (n) {
 const ACCESOS = {
   escanear: { nombre: 'Escanear', icono: 'escanear', fn: () => escanearYAbrir() },
   nuevoProducto: { nombre: 'Nuevo producto', icono: 'sumar', fn: () => hojaNuevoProducto({}) },
-  stock: { nombre: 'Arreglo de stock', icono: 'stock', fn: () => ir('stock') },
+  stock: { nombre: 'Stock', icono: 'stock', fn: () => ir('stock') },
+  perdidas: { nombre: 'Pérdidas', icono: 'perdidas', fn: () => ir('perdidas') },
   clientes: { nombre: 'Clientes', icono: 'clientes', fn: () => ir('clientes') },
   caja: { nombre: 'Caja', icono: 'caja', fn: () => ir('caja') },
   ventas: { nombre: 'Ventas', icono: 'ventas', fn: () => ir('ventas') },
@@ -933,13 +1093,25 @@ const ACCESOS = {
   faltantes: { nombre: 'Faltantes', icono: 'faltantes', fn: () => ir('faltantes') },
   promos: { nombre: 'Promos', icono: 'promos', fn: () => ir('promos') },
   historial: { nombre: 'Historial', icono: 'historial', fn: () => ir('historial') },
-  avisos: { nombre: 'Avisos', icono: 'avisos', fn: () => ir('avisos') }
+  avisos: { nombre: 'Avisos', icono: 'avisos', fn: () => ir('avisos') },
+  cierresemana: { nombre: 'Cerrar semana', icono: 'cierres', fn: () => ir('cierresemana') },
+  cierremes: { nombre: 'Cerrar mes', icono: 'cierres', fn: () => ir('cierremes') },
+  vencimientos: { nombre: 'Vencimientos', icono: 'reloj', fn: () => ir('vencimientos') },
+  mandado: { nombre: 'Lo que mandé', icono: 'historial', fn: () => ir('mandado') }
 }
-const ACCESOS_DE_FABRICA = ['escanear', 'nuevoProducto', 'stock', 'clientes', 'caja', 'ventas', 'reportes', 'gastos']
+const ACCESOS_DE_FABRICA = ['escanear', 'nuevoProducto', 'stock', 'perdidas', 'clientes', 'caja', 'ventas', 'reportes', 'gastos']
 const accesosElegidos = () => (leerLocal('bs.accesos', null) || ACCESOS_DE_FABRICA).filter((k) => ACCESOS[k] && seccionPermitida(k))
 
-// El orden del dia operativo: de las 6 a las 5 del otro dia (un local 24 horas).
-const ordenHora = (h) => (h - 6 + 24) % 24
+// El orden del dia operativo: desde la hora de corte de la caja (las 5 si no
+// se cambio) hasta la misma hora del otro dia (un local 24 horas).
+const ordenHora = (h) => (h - (S.horaCorte == null ? 5 : S.horaCorte) + 24) % 24
+
+// Lo que se mando y no entro: arriba de todo en cada inicio, hasta que se mira.
+function avisoNoEntro () {
+  const n = (S.fallidas || []).length + (S.hechas || []).filter((o) => o.estado !== 'aplicada' && !o.visto && !o.silencioso).length
+  return n ? el('div', { clase: 'alerta-fila mal', onclick: () => ir('mandado'), estilo: { marginBottom: '12px' } },
+    el('span', { clase: 'ico' }, icono('nube')), el('div', { clase: 'txt' }, el('b', {}, n + (n === 1 ? ' cosa que mandaste no entró' : ' cosas que mandaste no entraron')), el('span', { clase: 'sub' }, 'Tocá para ver por qué y volver a cargarlas')), icono('flecha')) : null
+}
 
 // El inicio del encargado: lo del local, sin plata.
 async function secInicioEncargado () {
@@ -952,13 +1124,16 @@ async function secInicioEncargado () {
     ['contar', 'Contar stock', 'contar'],
     ['recibir', 'Recibir mercadería', 'recibir'],
     ['pasar', 'Pasar a otra sucursal', 'pasar'],
-    ['stock', 'Arreglo de stock', 'stock'],
+    ['stock', 'Stock', 'stock'],
     ['encargos', 'Encargos de clientes', 'pedidos'],
     ['reponer', 'Reponer', 'reponer'],
-    ['faltantes', 'Faltantes', 'faltantes']
+    ['faltantes', 'Faltantes', 'faltantes'],
+    ['vencimientos', 'Vencimientos', 'reloj'],
+    ['perdidas', 'Registrar pérdida', 'perdidas']
   ].filter(([id]) => id === 'escanear' || SECCIONES[id])
   pintarSeccion('inicio',
     cabecera('Hola', nombreSucursal(S.sucursal) + ' · encargado'),
+    avisoNoEntro(),
     el('div', { clase: 'mas-grilla' }, tareas.map(([id, nombre, ic, fn]) => el('button', { clase: 'acceso', onclick: fn || (() => ir(id)) }, el('span', { clase: 'ico' }, icono(ic)), nombre))),
     negativos || bajos
       ? el('div', { clase: 'tarjeta tocable', estilo: { marginTop: '12px' }, onclick: () => ir(negativos ? 'stock' : 'reponer') },
@@ -982,6 +1157,8 @@ async function secInicio () {
   const ids = todas ? S.sucursales.map((x) => x.id) : [S.sucursal]
   const filas = resumenes.filter((r) => ids.includes(r.sucursal_id))
   const hoy = hoyISO()
+  const corte = (datosDe(reps) || {}).horaCorte
+  if (corte != null) S.horaCorte = corte
   const suma = (fn) => filas.reduce((a, f) => a + (fn(f.datos || {}, f.sucursal_id) || 0), 0)
   const total = suma((d) => d.total)
   const ventas = suma((d) => d.ventas)
@@ -1029,8 +1206,13 @@ async function secInicio () {
     else if (d.caja && !d.caja.abierta) alertas.push(['alerta', 'caja', 'La caja de ' + f.nombre + ' está cerrada', 'Nadie abrió turno', () => { cambiarSucursalSinPintar(f.sucursal_id); ir('caja') }])
   }
   if (negativos) alertas.push(['alerta', 'faltantes', negativos + (negativos === 1 ? ' producto en negativo' : ' productos en negativo'), 'Se vendió más de lo que el sistema tenía', () => ir('faltantes')])
+  // Lo que subio de costo al recibir y espera el precio (antes, solo en la compu).
+  const pendPrecio = (datosDe(await leerDatos('precios_pendientes').catch(() => ({}))) || []).length
+  if (pendPrecio) alertas.push(['alerta', 'gastos', pendPrecio + (pendPrecio === 1 ? ' precio para revisar' : ' precios para revisar'), 'Subió el costo al recibir: decidí si cambiás el precio', () => hojaPreciosPendientes()])
   const esperando = S.cola.length + S.esperando.size
   if (esperando) alertas.push(['info', 'nube', esperando + (esperando === 1 ? ' cambio en camino' : ' cambios en camino'), S.cola.length ? 'Se mandan cuando vuelva internet' : 'Esperando que la caja lo aplique', () => hojaConexion()])
+  const fallaron = (S.fallidas || []).length + (S.hechas || []).filter((o) => o.estado !== 'aplicada' && !o.visto && !o.silencioso).length
+  if (fallaron) alertas.unshift(['mal', 'nube', fallaron + (fallaron === 1 ? ' cosa que mandaste no entró' : ' cosas que mandaste no entraron'), 'Tocá para ver por qué y volver a cargarlas', () => ir('mandado')])
 
   const accesos = el('div', { clase: 'accesos' }, accesosElegidos().map((k) => el('button', { clase: 'acceso', onclick: ACCESOS[k].fn }, el('span', { clase: 'ico' }, icono(ACCESOS[k].icono)), ACCESOS[k].nombre)))
 
@@ -1169,9 +1351,17 @@ async function abrirBuscador (inicial) {
 
 function aplicarTema () {
   const t = leerLocal('bs.tema', 'auto')
-  if (t === 'auto') document.documentElement.removeAttribute('data-theme')
-  else document.documentElement.setAttribute('data-theme', t)
+  const hora = new Date().getHours()
+  const tema = t === 'auto' ? (hora >= 7 && hora < 20 ? 'light' : 'dark') : t
+  document.documentElement.setAttribute('data-theme', tema)
+  const barraNavegador = document.querySelector('meta[name="theme-color"]')
+  if (barraNavegador) barraNavegador.content = tema === 'dark' ? '#0a0c0f' : '#e3edf5'
+  // En equipos de poca memoria se evitan varias capas de desenfoque.
+  if (navigator.deviceMemory && navigator.deviceMemory <= 2) document.documentElement.setAttribute('data-liviano', '')
 }
+
+setInterval(() => { if (!document.hidden) aplicarTema() }, 60000)
+document.addEventListener('visibilitychange', () => { if (!document.hidden) aplicarTema() })
 
 seccion('inicio', { nombre: 'Inicio', icono: 'inicio', grupo: 'principal', fn: secInicio })
 
