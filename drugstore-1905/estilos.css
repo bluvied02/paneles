@@ -201,12 +201,14 @@ button.item:active, .item.tocable:active { background: var(--sup2); }
 .btn svg.ic { width: 18px; height: 18px; }
 .btn-ico { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; border: 1px solid var(--borde); background: var(--sup); color: var(--texto2); cursor: pointer; flex: none; }
 
-input[type=text], input[type=search], input[type=email], input[type=password], input[type=number], input[type=date], input[type=tel], select, textarea {
+input[type=text], input[type=search], input[type=email], input[type=password], input[type=number], input[type=date], input[type=datetime-local], input[type=month], input[type=tel], select, textarea {
   width: 100%; background: var(--sup); border: 1px solid var(--borde2); border-radius: 11px; padding: 11px 13px; outline: none; font-size: 16px; min-height: 46px; }
 input:focus, select:focus, textarea:focus { border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-suave); }
 label.campo, .campo { display: grid; gap: 5px; margin-bottom: 12px; font-size: 13px; color: var(--texto2); font-weight: 600; }
 .campo .ayuda { font-weight: 500; color: var(--texto3); font-size: 12.5px; }
 .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cierre-fechas > * { min-width: 0; }
+@media (max-width: 600px) { .cierre-fechas { grid-template-columns: minmax(0, 1fr); } }
 .buscador { position: relative; margin-bottom: 10px; display: flex; gap: 8px; }
 .buscador input { padding-left: 40px; flex: 1; }
 .buscador > svg.ic { position: absolute; left: 13px; top: 13px; color: var(--texto3); pointer-events: none; }
@@ -325,3 +327,177 @@ label.campo, .campo { display: grid; gap: 5px; margin-bottom: 12px; font-size: 1
 .leyenda-met i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .leyenda-met i.serie-1 { background: var(--acento); }
 .leyenda-met i.serie-2 { background: var(--verde); }
+
+/* VIDRIO EN EL CELULAR — acompana el diseno de la caja.
+   El fondo conserva profundidad; la informacion sigue legible sobre cada pieza.
+   Las hojas y los controles mantienen tamanos comodos para tocar con una mano. */
+:root {
+  --fondo: #e3edf5;
+  --sup: rgba(255, 255, 255, .68);
+  --sup2: rgba(255, 255, 255, .52);
+  --sup3: rgba(255, 255, 255, .78);
+  --borde: rgba(255, 255, 255, .94);
+  --borde2: rgba(92, 125, 151, .3);
+  --linea: rgba(16, 32, 46, .09);
+  --texto: #10202e;
+  --texto2: #46576a;
+  --texto3: #64768a;
+  --acento: #0b86c4;
+  --acento-hover: #0872a8;
+  --acento-suave: rgba(11, 134, 196, .14);
+  --acento-texto: #ffffff;
+  --barra: var(--acento);
+  --barra2: rgba(11, 134, 196, .24);
+  --sombra: inset 0 1px 0 rgba(255, 255, 255, .9), 0 10px 28px rgba(35, 70, 100, .1);
+  --sombra-alta: inset 0 1px 0 rgba(255, 255, 255, .8), 0 20px 50px rgba(19, 40, 64, .2);
+  --vidrio-blur: blur(22px) saturate(160%);
+  --radio: 22px;
+  --radio-s: 15px;
+  --cobrar-1: #8bffc4;
+  --cobrar-2: #2df08c;
+  --cobrar-3: #12c96d;
+  --cobrar-texto: #02261a;
+  --total-verde: #087c4c;
+  --total-brillo: rgba(18, 201, 109, .28);
+  --logo-opacidad: .055;
+}
+
+/* El tema automatico lo elige aplicarTema() por horario, igual que la caja. */
+:root[data-theme="dark"] {
+  --fondo: #0a0c0f;
+  --sup: rgba(255, 255, 255, .075);
+  --sup2: rgba(255, 255, 255, .055);
+  --sup3: rgba(255, 255, 255, .11);
+  --borde: rgba(255, 255, 255, .16);
+  --borde2: rgba(255, 255, 255, .23);
+  --linea: rgba(255, 255, 255, .09);
+  --texto: #f2f4f7;
+  --texto2: #b6bcc7;
+  --texto3: #9ca5b2;
+  --acento: #38bdf8;
+  --acento-hover: #6ad1fb;
+  --acento-suave: rgba(56, 189, 248, .17);
+  --acento-texto: #082332;
+  --barra2: rgba(56, 189, 248, .24);
+  --sombra: inset 0 1px 0 rgba(255, 255, 255, .13), 0 10px 28px rgba(0, 0, 0, .22);
+  --sombra-alta: inset 0 1px 0 rgba(255, 255, 255, .16), 0 20px 50px rgba(0, 0, 0, .48);
+  --total-verde: #5dffa8;
+  --total-brillo: rgba(34, 229, 139, .38);
+  --logo-opacidad: .05;
+  color-scheme: dark;
+}
+
+/* Luz azul arriba y verde abajo, con el icono como marca de agua tenue. */
+body { background: var(--fondo); }
+body::before, body::after { content: ''; position: fixed; pointer-events: none; z-index: 0; }
+body::before { inset: 0; background:
+  radial-gradient(75% 35% at 4% 0%, color-mix(in srgb, var(--acento) 28%, transparent), transparent 76%),
+  radial-gradient(85% 48% at 100% 100%, rgba(34, 229, 139, .14), transparent 75%); }
+body::after { width: min(65vw, 350px); aspect-ratio: 1; left: 50%; top: 33%; transform: translateX(-50%);
+  background: url('icono-192.png') center / contain no-repeat; opacity: var(--logo-opacidad); }
+#app { position: relative; z-index: 1; }
+
+/* Superficies compartidas por Inicio, Ventas, Productos, Caja y las demas secciones. */
+.tarjeta, .kpi, .acceso, .alerta-fila, .buscar-falso, .conexion,
+.dato-grande > div, .detalles, .lado, .hoja, .busqueda-global {
+  -webkit-backdrop-filter: var(--vidrio-blur);
+  backdrop-filter: var(--vidrio-blur);
+  box-shadow: var(--sombra);
+}
+.tarjeta, .kpi, .acceso, .alerta-fila, .buscar-falso, .dato-grande > div,
+.detalles { border: 1px solid var(--borde); border-radius: var(--radio); }
+.tarjeta.sin-relleno { background: var(--sup); overflow: hidden; }
+.kpi.principal { background: color-mix(in srgb, var(--sup) 83%, var(--acento-suave)); }
+.kpi .v { font-family: inherit; letter-spacing: -.03em; }
+.acceso .ico { border-radius: 16px; }
+.alerta-fila .ico { border-radius: 12px; }
+.fila + .fila, .item, .tabla td { border-color: var(--linea); }
+.item:active, button.item:active, .item.tocable:active { background: var(--acento-suave); }
+
+/* Los elementos flotantes reemplazan las barras pegadas a los bordes. */
+.arriba { background: var(--sup); border: 1px solid var(--borde); border-radius: 24px;
+  box-shadow: var(--sombra); -webkit-backdrop-filter: var(--vidrio-blur); backdrop-filter: var(--vidrio-blur); }
+.buscar-falso { border-radius: 999px; }
+.conexion { border-radius: 999px; }
+.avatar { border: 1px solid var(--borde); box-shadow: var(--sombra); }
+.lado { background: var(--sup); border: 1px solid var(--borde); border-radius: 28px; height: calc(100vh - 28px); top: 14px; }
+.lado button { border-radius: 999px; }
+
+.filtro, .btn, .btn-ico, .seg, .seg button, .seg button.activo { border-radius: 999px; }
+.filtro { background: var(--sup); border-color: var(--borde); }
+.filtro.activo { color: var(--acento-texto); background: var(--acento); border-color: var(--acento); }
+.seg { background: var(--sup2); border: 1px solid var(--borde); }
+.seg button.activo { background: var(--sup3); box-shadow: var(--sombra); }
+.btn { background: var(--sup3); border-color: var(--borde); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); }
+.btn.primario { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+.btn.suave { background: var(--acento-suave); }
+.btn.grande { border-radius: 999px; }
+.btn-ico { background: var(--sup3); }
+input[type=text], input[type=search], input[type=email], input[type=password],
+input[type=number], input[type=date], input[type=tel], select, textarea {
+  background: var(--sup3); border-color: var(--borde2); border-radius: 16px; }
+.chip { border-radius: 999px; }
+
+/* La hoja de detalle es vidrio mas denso: texto, formularios y cierre legibles. */
+.hoja { background: color-mix(in srgb, var(--fondo) 88%, var(--sup));
+  border: 1px solid var(--borde); border-bottom: 0; border-radius: 28px 28px 0 0; box-shadow: var(--sombra-alta); }
+.hoja .agarre { width: 42px; background: var(--borde2); }
+.hoja .pie-hoja { background: color-mix(in srgb, var(--fondo) 88%, var(--sup)); }
+.busqueda-global { background: color-mix(in srgb, var(--sup) 88%, var(--fondo)); }
+.busqueda-global .cab { background: var(--sup2); }
+.detalles { background: var(--sup2); }
+
+/* Cobrar conserva el verde luminoso de la caja; los demas botones son azules. */
+.btn.primario.venta-cobrar, .hoja-cobrar .btn.primario {
+  background: linear-gradient(135deg, var(--cobrar-1), var(--cobrar-2) 54%, var(--cobrar-3));
+  color: var(--cobrar-texto); border-color: transparent;
+  box-shadow: 0 9px 30px var(--total-brillo), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+.venta-total { color: var(--total-verde); text-shadow: 0 0 24px var(--total-brillo); }
+
+/* Pantallas angostas: margen para las piezas flotantes y tacto comodo. */
+@media (max-width: 860px) {
+  main { padding: 0 14px calc(108px + env(safe-area-inset-bottom)); }
+  .arriba { top: max(10px, env(safe-area-inset-top)); margin: 10px 0 18px; padding: 9px 12px; min-height: 58px; }
+  .tabbar { left: 10px; right: 10px; bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 6px 5px; border: 1px solid var(--borde); border-radius: 28px;
+    background: color-mix(in srgb, var(--sup) 87%, var(--fondo)); box-shadow: var(--sombra-alta);
+    -webkit-backdrop-filter: var(--vidrio-blur); backdrop-filter: var(--vidrio-blur); }
+  .tabbar button { min-height: 52px; border-radius: 20px; }
+  .tabbar button.activo { color: var(--acento); background: var(--acento-suave); }
+  .tabbar .escanear span.bola { border-radius: 20px; background: var(--acento); }
+  .hoja .pie-hoja { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .grilla { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 360px) {
+  .arriba { gap: 6px; }
+  .conexion { padding: 6px; font-size: 0; }
+  .conexion .punto { width: 10px; height: 10px; }
+  .kpi { padding: 11px 12px; }
+  .tabbar button { font-size: 10px; }
+}
+@media (min-width: 861px) {
+  .app { gap: 16px; padding: 14px; }
+  .lado { height: calc(100vh - 28px); top: 14px; }
+  main { padding: 0 18px 48px 0; }
+  .arriba { padding: 10px 16px; }
+  .hoja { border-radius: 28px; border-bottom: 1px solid var(--borde); }
+}
+
+/* Telefono lento o preferencia de menos transparencia: misma forma, fondo solido. */
+:root[data-liviano] {
+  --sup: #ffffff; --sup2: #f3f6f9; --sup3: #ffffff;
+  --borde: #d3dce5; --vidrio-blur: none;
+}
+:root[data-liviano][data-theme="dark"] {
+  --sup: #1c1f26; --sup2: #23272f; --sup3: #252a32; --borde: #343943;
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --vidrio-blur: none; }
+  :root:not([data-theme="dark"]) { --sup: #ffffff; --sup2: #f3f6f9; --sup3: #ffffff; }
+  :root[data-theme="dark"] { --sup: #1c1f26; --sup2: #23272f; --sup3: #252a32; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .telon, .hoja, .aviso-toast, .esqueleto, .conexion.sinc .punto { animation: none; }
+  .btn:active, button.kpi:active, .acceso:active { transform: none; }
+}
