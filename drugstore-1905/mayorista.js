@@ -173,7 +173,20 @@ async function hojaMay (suc, d, x) {
     const id = x ? x.id : uuid()
     const numero = x ? x.numero : reservarNumero(d)
     const { orden, vista } = armar(numero, id)
-    vista.ordenId = await mandarOrden(suc, 'mayorista_guardar', { presupuesto: orden }, { texto: 'Presupuesto ' + numero, alTerminar: () => refrescarSeccion() })
+    // Si la caja ya habia usado ese numero, le pone otro: el PDF que salio dice
+    // el viejo, asi que se avisa y se ofrece mandarlo de nuevo.
+    vista.ordenId = await mandarOrden(suc, 'mayorista_guardar', { presupuesto: orden }, { texto: 'Presupuesto ' + numero, alTerminar: (r) => {
+      const real = r && r.resultado && r.resultado.datos && r.resultado.datos.numero
+      if (r && r.estado === 'aplicada' && real && real !== numero && conPdf) {
+        const corregido = Object.assign({}, vista, { numero: real })
+        abrirHoja({
+          titulo: 'El presupuesto quedó como ' + real,
+          cuerpo: el('p', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, 'El número ' + numero + ' ya estaba usado en la caja: quedó guardado como ' + real + '. El PDF que mandaste dice ' + numero + '.'),
+          botones: [{ texto: 'Mandar el PDF corregido', primario: true, alTocar: (cerrar) => { cerrar(); compartirPdfMay(corregido, d) } }]
+        })
+      }
+      refrescarSeccion()
+    } })
     await anotarPendienteMay(vista)
     cerrar()
     if (conPdf) await compartirPdfMay(vista, d)
@@ -183,12 +196,20 @@ async function hojaMay (suc, d, x) {
   const cambiarEstado = (estado, cerrar) => { cerrar(); mandarOrden(suc, 'mayorista_estado', { id: x.id, estado }, { texto: x.numero + ': ' + ESTADO_MAY[estado][0].toLowerCase(), alTerminar: () => refrescarSeccion() }) }
   const aVenta = () => {
     const sel = el('select', {}, MEDIOS_MAY.map(([v, t]) => el('option', { valor: v }, t)))
+    // El efectivo cobrado en mano no es del cajon del cajero: solo suma ahi si
+    // se dejo en el cajon del local.
+    const enCajon = el('input', { type: 'checkbox' })
+    const zonaCajon = el('label', { clase: 'fila', estilo: { gap: '8px', alignItems: 'center', marginTop: '6px', whiteSpace: 'normal' } }, enCajon, 'La plata la dejé en el cajón del local (si no, queda aparte y no le suma al cajero)')
+    const pintarCajon = () => { zonaCajon.style.display = sel.value === 'efectivo' ? '' : 'none' }
+    sel.addEventListener('change', pintarCajon)
+    pintarCajon()
     abrirHoja({
       titulo: 'Pasar ' + x.numero + ' a venta',
       cuerpo: el('div', {},
         el('p', { clase: 'sub', estilo: { whiteSpace: 'normal' } }, 'Se carga como venta mayorista de ' + plata(x.total) + ' en ' + nombreSucursal(suc) + ': descuenta el stock y en los reportes va separada de las de mostrador. Si la caja está cerrada, entra cuando se abra.'),
-        el('label', { clase: 'campo' }, 'Cómo paga', sel)),
-      botones: [{ texto: 'Pasar a venta', primario: true, alTocar: (cerrar) => { cerrarHoja(2); mandarOrden(suc, 'mayorista_venta', { id: x.id, medio: sel.value }, { texto: 'Venta de ' + x.numero, alTerminar: () => refrescarSeccion() }); void cerrar } }]
+        el('label', { clase: 'campo' }, 'Cómo paga', sel),
+        zonaCajon),
+      botones: [{ texto: 'Pasar a venta', primario: true, alTocar: (cerrar) => { cerrarHoja(2); mandarOrden(suc, 'mayorista_venta', { id: x.id, medio: sel.value, enCajon: sel.value === 'efectivo' && enCajon.checked }, { texto: 'Venta de ' + x.numero, alTerminar: () => refrescarSeccion() }); void cerrar } }]
     })
   }
 
@@ -337,13 +358,8 @@ async function armarPdfMay (x, d) {
   return doc.output('blob')
 }
 
-function telWhatsApp (t) {
-  let n = String(t || '').replace(/\D+/g, '')
-  if (!n) return ''
-  if (n.startsWith('0')) n = n.slice(1)
-  if (!n.startsWith('54')) n = '549' + n
-  return n
-}
+// El mismo arreglo del numero que Clientes y Proveedores (saca el 0 y el 15).
+const telWhatsApp = (t) => numeroWhatsApp(t)
 
 // Compartir: en el telefono abre "Compartir" con el PDF (WhatsApp, mail...).
 // Si el navegador no puede compartir archivos, lo descarga y abre el chat.
