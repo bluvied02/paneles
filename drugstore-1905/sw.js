@@ -8,16 +8,23 @@
 // comparten dominio): al actualizarse, cada una borra solo los suyos.
 const ESPACIO = /\/paneles\//.test(self.registration.scope) ? new URL(self.registration.scope).pathname : ''
 const PREFIJO = ESPACIO ? 'cliente|' + ESPACIO + '|v' : 'bs-panel-v'
-const VERSION = PREFIJO + '12-2'
-const APP = ['./', 'index.html', 'estilos.css?v=12.7', 'app.js?v=12.7', 'lector.js?v=12.7', 'productos.js?v=12.7', 'negocio.js?v=12.7', 'promociones.js?v=12.7', 'local.js?v=12.7', 'otros.js?v=12.7', 'mayorista-calculo.js?v=12.7', 'mayorista.js?v=12.7', 'metricas-calculo.js?v=12.7', 'metricas.js?v=12.7', 'manifest.webmanifest', 'icono-192.png', 'icono-512.png']
-const LIBRERIAS = ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js']
+const VERSION = PREFIJO + '13-27'
+const APP = ['./', 'index.html', 'estilos.css?v=13.29', 'app.js?v=13.29', 'lector.js?v=13.29', 'productos.js?v=13.29', 'perdidas.js?v=13.29', 'negocio.js?v=13.29', 'promociones.js?v=13.29', 'local.js?v=13.29', 'otros.js?v=13.29', 'personal.js?v=13.29', 'configuracion.js?v=13.29', 'cierres.js?v=13.29', 'mayorista-calculo.js?v=13.29', 'mayorista.js?v=13.29', 'metricas-calculo.js?v=13.29', 'metricas.js?v=13.29', 'manifest.webmanifest', 'icono-192.png', 'icono-512.png']
+// Las librerias van en un cache aparte que no se borra al actualizar la app:
+// el lector de codigos del iPhone (ZXing) se bajaba la primera vez y despues
+// de cada version nueva se perdia, y sin internet la camara no leia.
+const LIBRERIAS = ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js', 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js']
+const CACHE_LIBRERIAS = PREFIJO.replace(/v$/, '') + 'librerias'
 
 self.addEventListener('install', (ev) => {
-  ev.waitUntil(caches.open(VERSION).then((c) => Promise.all(APP.concat(LIBRERIAS).map((u) => c.add(u).catch(() => null)))).then(() => self.skipWaiting()))
+  ev.waitUntil(Promise.all([
+    caches.open(VERSION).then((c) => Promise.all(APP.map((u) => c.add(u).catch(() => null)))),
+    caches.open(CACHE_LIBRERIAS).then((c) => Promise.all(LIBRERIAS.map((u) => c.match(u).then((ya) => ya || c.add(u).catch(() => null)))))
+  ]).then(() => self.skipWaiting()))
 })
 
 self.addEventListener('activate', (ev) => {
-  ev.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith(PREFIJO) && k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()))
+  ev.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith(PREFIJO) && k !== VERSION && k !== CACHE_LIBRERIAS).map((k) => caches.delete(k)))).then(() => self.clients.claim()))
 })
 
 self.addEventListener('fetch', (ev) => {
@@ -27,7 +34,7 @@ self.addEventListener('fetch', (ev) => {
   // Las librerias (con version en la direccion): de lo guardado, y si no, de internet.
   if (url.hostname === 'cdn.jsdelivr.net') {
     ev.respondWith(caches.match(req).then((r) => r || fetch(req).then((resp) => {
-      if (resp.ok) { const copia = resp.clone(); caches.open(VERSION).then((c) => c.put(req, copia)) }
+      if (resp.ok) { const copia = resp.clone(); caches.open(CACHE_LIBRERIAS).then((c) => c.put(req, copia)) }
       return resp
     })))
     return
@@ -50,14 +57,17 @@ self.addEventListener('push', (ev) => {
     icon: 'icono-192.png',
     badge: 'icono-192.png',
     tag: d.tag || undefined,
-    data: { url: './#/avisos' }
+    // Los avisos de pedidos abren Reponer, donde se manda en un toque; los
+    // pedidos de la tienda online, Encargos.
+    data: { url: d.tipo === 'pedido' ? './#/reponer' : d.tipo === 'encargo' ? './#/encargos' : './#/avisos' }
   }))
 })
 
 self.addEventListener('notificationclick', (ev) => {
   ev.notification.close()
   ev.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ventanas) => {
-    for (const v of ventanas) if ('focus' in v) return v.focus()
-    return self.clients.openWindow((ev.notification.data && ev.notification.data.url) || './')
+    const url = (ev.notification.data && ev.notification.data.url) || './'
+    for (const v of ventanas) if ('focus' in v) { if (v.navigate && url !== './') v.navigate(url).catch(() => {}); return v.focus() }
+    return self.clients.openWindow(url)
   }))
 })
